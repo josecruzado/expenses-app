@@ -2,7 +2,7 @@
 	import Header from './Header.svelte';
 	import PWAManager from '$lib/components/PWAManager.svelte';
 	import SplashScreen from '$lib/components/SplashScreen.svelte';
-	import '../app.css';
+	import '../app-new.css';
 	
 	// Import Dynamic Island integration
 	import { onMount } from 'svelte';

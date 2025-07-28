@@ -1,0 +1,163 @@
+/* Design Tokens - iOS 18 Design System */
+/* Este archivo contiene todas las variables CSS del sistema de diseño */
+
+:root {
+	/* === TIPOGRAFÍA === */
+	--font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+	--font-mono: 'SF Mono', 'Fira Mono', Menlo, Monaco, Consolas, monospace;
+	
+	/* Tamaños de fuente iOS */
+	--font-size-large-title: 34px;
+	--font-size-title-1: 28px;
+	--font-size-title-2: 22px;
+	--font-size-title-3: 20px;
+	--font-size-headline: 17px;
+	--font-size-body: 17px;
+	--font-size-callout: 16px;
+	--font-size-subhead: 15px;
+	--font-size-footnote: 13px;
+	--font-size-caption-1: 12px;
+	--font-size-caption-2: 11px;
+	
+	/* Pesos de fuente - Solo los que se usan */
+	/* --font-weight-ultralight: 100; */
+	/* --font-weight-thin: 200; */
+	/* --font-weight-light: 300; */
+	--font-weight-regular: 400;
+	--font-weight-medium: 500;
+	--font-weight-semibold: 600;
+	--font-weight-bold: 700;
+	/* --font-weight-heavy: 800; */
+	/* --font-weight-black: 900; */
+	
+	/* === ESPACIADO === */
+	--spacing-xs: 4px;
+	--spacing-sm: 8px;
+	--spacing-md: 16px;
+	--spacing-lg: 24px;
+	--spacing-xl: 32px;
+	--spacing-2xl: 48px;
+	
+	/* === BORDES === */
+	--radius-sm: 6px;
+	--radius-md: 10px;
+	--radius-lg: 14px;
+	--radius-xl: 20px;
+	--radius-2xl: 28px;
+	
+	/* === SAFE AREAS === */
+	--safe-area-inset-top: env(safe-area-inset-top);
+	--safe-area-inset-right: env(safe-area-inset-right);
+	--safe-area-inset-bottom: env(safe-area-inset-bottom);
+	--safe-area-inset-left: env(safe-area-inset-left);
+	
+	/* === COLORES BASE (Modo Oscuro por defecto para Dynamic Island) === */
+	--color-bg-primary: #000000;
+	--color-bg-secondary: #1c1c1e;
+	--color-bg-tertiary: #2c2c2e;
+	
+	/* Aliases para compatibilidad */
+	--color-bg-grouped: var(--color-bg-primary);
+	--color-bg-grouped-secondary: var(--color-bg-secondary);
+	
+	--color-fill-primary: rgba(120, 120, 128, 0.2);
+	--color-fill-secondary: rgba(120, 120, 128, 0.16);
+	--color-fill-tertiary: rgba(120, 120, 128, 0.12);
+	--color-fill-quaternary: rgba(120, 120, 128, 0.08);
+	
+	--color-text-primary: #ffffff;
+	--color-text-secondary: rgba(235, 235, 245, 0.6);
+	--color-text-tertiary: rgba(235, 235, 245, 0.3);
+	--color-text-quaternary: rgba(235, 235, 245, 0.18);
+	
+	/* Aliases para compatibilidad (apuntan a las mismas variables de texto) */
+	--color-label-primary: var(--color-text-primary);
+	--color-label-secondary: var(--color-text-secondary);
+	--color-label-tertiary: var(--color-text-tertiary);
+	--color-label-quaternary: var(--color-text-quaternary);
+	
+	--color-link: #0A84FF;
+	--color-separator: rgba(84, 84, 88, 0.6);
+	--color-separator-opaque: #38383A;
+	
+	/* === COLORES SEMÁNTICOS === */
+	--color-blue: #0A84FF;
+	--color-green: #32D74B;
+	/* --color-indigo: #5E5CE6; */
+	--color-orange: #FF9F0A;
+	/* --color-pink: #FF2D92; */
+	--color-purple: #BF5AF2;
+	--color-red: #FF453A;
+	/* --color-teal: #64D2FF; */
+	/* --color-yellow: #FFD60A; */
+	
+	/* === SOMBRAS === */
+	/* --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1); */
+	--shadow-md: 0 4px 16px rgba(0, 0, 0, 0.15);
+	--shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.2);
+	--shadow-xl: 0 16px 64px rgba(0, 0, 0, 0.3);
+	
+	/* === TRANSICIONES === */
+	--transition-fast: 0.1s ease;
+	--transition-normal: 0.2s ease;
+	--transition-slow: 0.3s ease;
+	
+	/* === Z-INDEX === */
+	--z-dropdown: 100;
+	--z-sticky: 200;
+	--z-fixed: 300;
+	--z-modal: 400;
+	--z-popover: 500;
+	--z-tooltip: 600;
+}
+
+/* === MODO OSCURO === */
+@media (prefers-color-scheme: dark) {
+	:root {
+		/* Solo redefinir los valores que cambian en modo oscuro */
+		--color-fill-primary: rgba(120, 120, 128, 0.36);
+		--color-fill-secondary: rgba(120, 120, 128, 0.32);
+		--color-fill-tertiary: rgba(120, 120, 128, 0.24);
+		--color-fill-quaternary: rgba(120, 120, 128, 0.18);
+	}
+}
+
+/* === MODO CLARO === */
+@media (prefers-color-scheme: light) {
+	:root {
+		--color-bg-primary: #f2f2f7;
+		--color-bg-secondary: #ffffff;
+		--color-bg-tertiary: #f2f2f7;
+		--color-bg-grouped: #f2f2f7;
+		--color-bg-grouped-secondary: #ffffff;
+		
+		--color-fill-primary: rgba(120, 120, 128, 0.2);
+		--color-fill-secondary: rgba(120, 120, 128, 0.16);
+		--color-fill-tertiary: rgba(120, 120, 128, 0.12);
+		--color-fill-quaternary: rgba(120, 120, 128, 0.08);
+		
+		--color-text-primary: #000000;
+		--color-text-secondary: rgba(60, 60, 67, 0.6);
+		--color-text-tertiary: rgba(60, 60, 67, 0.3);
+		--color-text-quaternary: rgba(60, 60, 67, 0.18);
+		
+		--color-label-primary: #000000;
+		--color-label-secondary: rgba(60, 60, 67, 0.6);
+		--color-label-tertiary: rgba(60, 60, 67, 0.3);
+		--color-label-quaternary: rgba(60, 60, 67, 0.18);
+		
+		--color-link: #007AFF;
+		--color-separator: rgba(60, 60, 67, 0.29);
+		--color-separator-opaque: #C6C6C8;
+		
+		--color-blue: #007AFF;
+		--color-green: #34C759;
+		--color-indigo: #5856D6;
+		--color-orange: #FF9500;
+		--color-pink: #FF2D92;
+		--color-purple: #AF52DE;
+		--color-red: #FF3B30;
+		--color-teal: #5AC8FA;
+		--color-yellow: #FFCC00;
+	}
+}

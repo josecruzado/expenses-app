@@ -9,7 +9,6 @@ const DYNAMIC_CACHE_NAME = 'expenses-dynamic-v1.0.0';
 const STATIC_FILES = [
   '/',
   '/about',
-  '/sverdle',
   '/favicon.svg',
   '/manifest.webmanifest',
   // Add other static assets as needed

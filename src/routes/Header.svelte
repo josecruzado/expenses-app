@@ -13,16 +13,16 @@
 						<span>Dashboard</span>
 					</a>
 				</li>
+				<li aria-current={page.url.pathname === '/expenses' ? 'page' : undefined}>
+					<a href="/expenses">
+						<span class="nav-icon">💰</span>
+						<span>Expenses</span>
+					</a>
+				</li>
 				<li aria-current={page.url.pathname === '/about' ? 'page' : undefined}>
 					<a href="/about">
 						<span class="nav-icon">ℹ️</span>
 						<span>About</span>
-					</a>
-				</li>
-				<li aria-current={page.url.pathname.startsWith('/sverdle') ? 'page' : undefined}>
-					<a href="/sverdle">
-						<span class="nav-icon">🎮</span>
-						<span>Game</span>
 					</a>
 				</li>
 			</ul>

@@ -1,5 +1,78 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import Counter from './Counter.svelte';
+	import { gastos, loading, error, subscribeToGastos, unsubscribeFromGastos, formatCurrency, getCategoryIcon, getCategoryName, formatDate } from '$lib/firebase.js';
+
+	let currentMonthTotal = 0;
+	let transactionCount = 0;
+	let recentTransactions: any[] = [];
+	
+	// Helper function to parse Spanish date format
+	function parseSpanishDate(fecha: string): Date {
+		const monthMap: { [key: string]: number } = {
+			'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3,
+			'may': 4, 'jun': 5, 'jul': 6, 'ago': 7,
+			'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11
+		};
+		
+		const datePattern = /(\d{1,2})\s+([a-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.)/i;
+		const match = fecha.match(datePattern);
+		
+		if (match) {
+			const [, day, monthSpanish, year, hour, minute, period] = match;
+			const monthIndex = monthMap[monthSpanish.toLowerCase()];
+			
+			if (monthIndex !== undefined) {
+				const isPM = period.toLowerCase().includes('p');
+				let hour24 = parseInt(hour);
+				
+				if (isPM && hour24 !== 12) {
+					hour24 += 12;
+				} else if (!isPM && hour24 === 12) {
+					hour24 = 0;
+				}
+				
+				return new Date(parseInt(year), monthIndex, parseInt(day), hour24, parseInt(minute));
+			}
+		}
+		
+		return new Date(0); // Return epoch if parsing fails
+	}
+
+	// Calculate stats whenever gastos change
+	$: {
+		if ($gastos.length > 0) {
+			const now = new Date();
+			const currentMonth = now.getMonth();
+			const currentYear = now.getFullYear();
+			
+			// Calculate current month expenses
+			const monthlyExpenses = $gastos.filter(gasto => {
+				try {
+					const gastoDate = parseSpanishDate(gasto.fecha);
+					return gastoDate.getMonth() === currentMonth && gastoDate.getFullYear() === currentYear;
+				} catch {
+					return false;
+				}
+			});
+			
+			currentMonthTotal = monthlyExpenses.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0);
+			transactionCount = monthlyExpenses.length;
+			recentTransactions = $gastos.slice(0, 3); // Get 3 most recent transactions
+		} else {
+			currentMonthTotal = 0;
+			transactionCount = 0;
+			recentTransactions = [];
+		}
+	}
+
+	onMount(() => {
+		subscribeToGastos();
+	});
+
+	onDestroy(() => {
+		unsubscribeFromGastos();
+	});
 </script>
 
 <svelte:head>
@@ -8,21 +81,18 @@
 </svelte:head>
 
 <section class="dashboard">
-	<div class="welcome-card">
-		<div class="welcome-content">
-			<h1 class="welcome-title">Welcome back!</h1>
-			<p class="welcome-subtitle">Track your expenses with ease</p>
-		</div>
-		<div class="welcome-icon">
-			💰
-		</div>
-	</div>
 
 	<div class="stats-grid">
 		<div class="stat-card">
 			<div class="stat-icon">💸</div>
 			<div class="stat-content">
-				<h3 class="stat-value">$1,234.56</h3>
+				<h3 class="stat-value">
+					{#if $loading}
+						Loading...
+					{:else}
+						${currentMonthTotal.toFixed(2)}
+					{/if}
+				</h3>
 				<p class="stat-label">This Month</p>
 			</div>
 		</div>
@@ -30,7 +100,13 @@
 		<div class="stat-card">
 			<div class="stat-icon">📊</div>
 			<div class="stat-content">
-				<h3 class="stat-value">24</h3>
+				<h3 class="stat-value">
+					{#if $loading}
+						-
+					{:else}
+						{transactionCount}
+					{/if}
+				</h3>
 				<p class="stat-label">Transactions</p>
 			</div>
 		</div>
@@ -38,16 +114,30 @@
 		<div class="stat-card">
 			<div class="stat-icon">💳</div>
 			<div class="stat-content">
-				<h3 class="stat-value">$456.78</h3>
-				<p class="stat-label">Budget Left</p>
+				<h3 class="stat-value">
+					{#if $loading}
+						-
+					{:else}
+						{$gastos.length}
+					{/if}
+				</h3>
+				<p class="stat-label">Total Records</p>
 			</div>
 		</div>
 		
 		<div class="stat-card">
 			<div class="stat-icon">📈</div>
 			<div class="stat-content">
-				<h3 class="stat-value">+12%</h3>
-				<p class="stat-label">vs Last Month</p>
+				<h3 class="stat-value">
+					{#if $loading}
+						-
+					{:else if $gastos.length > 0}
+						{Math.max(...$gastos.map(g => g.monto)).toFixed(0)}
+					{:else}
+						$0
+					{/if}
+				</h3>
+				<p class="stat-label">Largest Expense</p>
 			</div>
 		</div>
 	</div>
@@ -58,46 +148,39 @@
 			<span>Add Expense</span>
 		</button>
 		
-		<button class="secondary-button">
+		<a href="/expenses" class="secondary-button">
 			<span class="button-icon">📋</span>
 			<span>View All</span>
-		</button>
+		</a>
 	</div>
 
 	<div class="recent-section">
 		<h2 class="section-title">Recent Transactions</h2>
 		
-		<div class="transaction-list">
-			<div class="transaction-item">
-				<div class="transaction-icon">🛒</div>
-				<div class="transaction-details">
-					<h4 class="transaction-title">Groceries</h4>
-					<p class="transaction-date">Today, 2:30 PM</p>
-				</div>
-				<div class="transaction-amount">-$67.45</div>
+		{#if $loading}
+			<div class="loading-message">Loading transactions...</div>
+		{:else if $error}
+			<div class="error-message">{$error}</div>
+		{:else if recentTransactions.length === 0}
+			<div class="empty-message">No transactions found</div>
+		{:else}
+			<div class="transaction-list">
+				{#each recentTransactions as gasto (gasto.id)}
+					<div class="transaction-item">
+						<div class="transaction-icon">{getCategoryIcon(gasto.categoria)}</div>
+						<div class="transaction-details">
+							<h4 class="transaction-title">{getCategoryName(gasto.categoria)}</h4>
+							<p class="transaction-date">{formatDate(gasto.fecha)}</p>
+							{#if gasto.nota}
+								<p class="transaction-note">{gasto.nota}</p>
+							{/if}
+						</div>
+						<div class="transaction-amount">{formatCurrency(gasto.monto)}</div>
+					</div>
+				{/each}
 			</div>
-			
-			<div class="transaction-item">
-				<div class="transaction-icon">⛽</div>
-				<div class="transaction-details">
-					<h4 class="transaction-title">Gas Station</h4>
-					<p class="transaction-date">Yesterday, 8:15 AM</p>
-				</div>
-				<div class="transaction-amount">-$45.20</div>
-			</div>
-			
-			<div class="transaction-item">
-				<div class="transaction-icon">☕</div>
-				<div class="transaction-details">
-					<h4 class="transaction-title">Coffee Shop</h4>
-					<p class="transaction-date">Dec 18, 3:45 PM</p>
-				</div>
-				<div class="transaction-amount">-$5.75</div>
-			</div>
-		</div>
+		{/if}
 	</div>
-
-	<Counter />
 </section>
 
 <style>
@@ -107,61 +190,6 @@
 		gap: var(--spacing-lg);
 		padding-bottom: var(--spacing-xl);
 		max-width: 100%;
-	}
-	
-	.welcome-card {
-		background: linear-gradient(135deg, var(--color-blue) 0%, #0056b3 100%);
-		border-radius: var(--radius-xl);
-		padding: var(--spacing-lg);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		color: white;
-		box-shadow: 0 8px 32px rgba(0, 122, 255, 0.3);
-		position: relative;
-		overflow: hidden;
-	}
-	
-	.welcome-card::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		background: 
-			radial-gradient(
-				circle at top right,
-				rgba(255, 255, 255, 0.2) 0%,
-				transparent 50%
-			);
-		pointer-events: none;
-	}
-	
-	.welcome-content {
-		position: relative;
-		z-index: 1;
-	}
-	
-	.welcome-title {
-		font-size: var(--font-size-title-1);
-		font-weight: var(--font-weight-bold);
-		margin: 0 0 var(--spacing-xs) 0;
-		color: white;
-	}
-	
-	.welcome-subtitle {
-		font-size: var(--font-size-body);
-		margin: 0;
-		opacity: 0.9;
-		color: white;
-	}
-	
-	.welcome-icon {
-		font-size: 48px;
-		line-height: 1;
-		position: relative;
-		z-index: 1;
 	}
 	
 	.stats-grid {
@@ -230,6 +258,7 @@
 		cursor: pointer;
 		transition: all 0.2s ease;
 		-webkit-tap-highlight-color: transparent;
+		text-decoration: none;
 	}
 	
 	.primary-button {
@@ -330,23 +359,39 @@
 		text-align: right;
 	}
 	
+	.transaction-note {
+		font-size: var(--font-size-footnote);
+		color: var(--color-text-tertiary);
+		margin: 2px 0 0 0;
+		font-style: italic;
+	}
+	
+	.loading-message,
+	.error-message,
+	.empty-message {
+		background: var(--color-bg-secondary);
+		border-radius: var(--radius-md);
+		padding: var(--spacing-lg);
+		text-align: center;
+		border: 1px solid var(--color-separator);
+	}
+	
+	.loading-message {
+		color: var(--color-text-secondary);
+	}
+	
+	.error-message {
+		color: var(--color-red);
+		background: rgba(255, 59, 48, 0.1);
+		border-color: rgba(255, 59, 48, 0.3);
+	}
+	
+	.empty-message {
+		color: var(--color-text-secondary);
+	}
+	
 	/* Responsive adjustments */
 	@media (max-width: 480px) {
-		.welcome-card {
-			padding: var(--spacing-md);
-		}
-		
-		.welcome-title {
-			font-size: var(--font-size-title-2);
-		}
-		
-		.welcome-subtitle {
-			font-size: var(--font-size-subhead);
-		}
-		
-		.welcome-icon {
-			font-size: 36px;
-		}
 		
 		.stats-grid {
 			gap: var(--spacing-sm);
