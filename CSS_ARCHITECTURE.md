@@ -20,7 +20,7 @@ src/
 │   │   └── navigation.css  # Navegación, modales, alerts
 │   └── utilities/
 │       └── helpers.css     # Clases utilitarias
-└── app-new.css            # Archivo principal que importa todo
+└── app.css            # Archivo principal que importa todo
 ```
 
 ## 🎨 Convención de Nomenclatura

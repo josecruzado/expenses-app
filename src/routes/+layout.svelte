@@ -1,71 +1,105 @@
 <script lang="ts">
-	import Header from './Header.svelte';
-	import PWAManager from '$lib/components/PWAManager.svelte';
-	import SplashScreen from '$lib/components/SplashScreen.svelte';
-	import '../app-new.css';
-	
+	import Header from "./Header.svelte";
+	import PWAManager from "$lib/components/PWAManager.svelte";
+	import SplashScreen from "$lib/components/SplashScreen.svelte";
+	import Login from "$lib/components/Login.svelte";
+	import "../app.css";
+
 	// Import Dynamic Island integration
-	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
+	import { onMount, onDestroy } from "svelte";
+	import { browser } from "$app/environment";
+	import { authStore, initAuthListener } from "$lib/stores/auth";
+	import {
+		subscribeToGastos,
+		unsubscribeFromGastos,
+	} from "$lib/services/gastosService";
+	import DynamicIsland from "$lib/components/DynamicIsland.svelte";
 
 	let { children } = $props();
-	
+	let unsubscribeAuth: (() => void) | null = null;
+	let unsubscribeGastos: (() => void) | null = null;
+
 	onMount(async () => {
 		if (browser) {
+			// Initialize Firebase Auth listener
+			unsubscribeAuth = initAuthListener();
+
+			// Subscribe to auth changes to initialize gastos
+			const authUnsubscribe = authStore.subscribe(($authStore) => {
+				if ($authStore.user && $authStore.initialized) {
+					// Usuario autenticado - suscribirse a gastos
+					subscribeToGastos();
+				} else if ($authStore.initialized && !$authStore.user) {
+					// Usuario no autenticado - limpiar suscripciones
+					unsubscribeFromGastos();
+				}
+			});
+
+			// Store auth subscription to clean up later
+			if (!unsubscribeGastos) {
+				unsubscribeGastos = authUnsubscribe;
+			}
+
 			// Initialize Dynamic Island integration
-			await import('$lib/dynamic-island');
+			await import("$lib/dynamic-island");
 		}
+	});
+
+	onDestroy(() => {
+		if (unsubscribeAuth) {
+			unsubscribeAuth();
+		}
+		if (unsubscribeGastos) {
+			unsubscribeGastos();
+		}
+		unsubscribeFromGastos();
 	});
 </script>
 
-<SplashScreen />
+<DynamicIsland />
 <PWAManager />
 
-<div class="app">
-	<Header />
-
-	<main>
-		{@render children()}
-	</main>
-</div>
+{#if !$authStore.initialized || $authStore.loading}
+	<SplashScreen />
+{:else if !$authStore.user}
+	<Login />
+{:else}
+    <div class="app">
+        <Header />
+        <main>
+            {@render children()}
+        </main>
+    </div>
+{/if}
 
 <style>
 	.app {
-		display: flex;
-		flex-direction: column;
-		min-height: 100vh;
-		min-height: 100dvh; /* Dynamic viewport height for mobile */
-		background-color: var(--color-bg-primary);
-		
-		/* Handle safe areas for iOS */
-		padding-bottom: max(var(--safe-area-inset-bottom), var(--spacing-md));
-	}
+        display: grid;
+        /* Fila 1 (Header) toma su altura natural. Fila 2 (main) toma el resto del espacio. */
+        grid-template-rows: auto 1fr;
+        height: 100vh; /* Opcional: height: 100dvh; para móviles */
+        background-color: var(--color-bg-primary);
+    }
 
-	main {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		padding: var(--spacing-md);
-		width: 100%;
-		max-width: 100%;
-		margin: 0 auto;
-		box-sizing: border-box;
-		
-		/* iOS-style momentum scrolling */
-		-webkit-overflow-scrolling: touch;
-		overflow-y: auto;
-		
-		/* Handle safe areas */
-		padding-left: max(var(--safe-area-inset-left), var(--spacing-md));
-		padding-right: max(var(--safe-area-inset-right), var(--spacing-md));
-	}
-	
-	/* Large screen adjustments */
-	@media (min-width: 768px) {
-		main {
-			max-width: 768px;
-			padding-left: var(--spacing-lg);
-			padding-right: var(--spacing-lg);
-		}
-	}
+    main {
+        /* Hacemos que SOLO el área principal sea la que tenga scroll */
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch; /* Scroll suave en iOS */
+        padding: var(--spacing-lg);
+
+        /* Padding para las 'safe areas' de iOS (notch, etc.) */
+        padding-left: max(var(--safe-area-inset-left), var(--spacing-lg));
+        padding-right: max(var(--safe-area-inset-right), var(--spacing-lg));
+        padding-bottom: max(var(--safe-area-inset-bottom), var(--spacing-lg));
+    }
+
+    /* Ajustes para pantallas grandes */
+    @media (min-width: 768px) {
+        main {
+            padding: var(--spacing-xl);
+            padding-left: max(var(--safe-area-inset-left), var(--spacing-xl));
+            padding-right: max(var(--safe-area-inset-right), var(--spacing-xl));
+            padding-bottom: max(var(--safe-area-inset-bottom), var(--spacing-xl));
+        }
+    }
 </style>

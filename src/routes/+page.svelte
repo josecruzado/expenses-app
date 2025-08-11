@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import Counter from './Counter.svelte';
-	import { gastos, loading, error, subscribeToGastos, unsubscribeFromGastos, formatCurrency, getCategoryIcon, getCategoryName, formatDate } from '$lib/firebase.js';
+	import { gastos, loading, error } from '$lib/firebase.js';
+    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
 
 	let currentMonthTotal = 0;
 	let transactionCount = 0;
@@ -10,32 +11,74 @@
 	// Helper function to parse Spanish date format
 	function parseSpanishDate(fecha: string): Date {
 		const monthMap: { [key: string]: number } = {
-			'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3,
-			'may': 4, 'jun': 5, 'jul': 6, 'ago': 7,
-			'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11
+			'ene': 0, 'enero': 0,
+			'feb': 1, 'febrero': 1,
+			'mar': 2, 'marzo': 2,
+			'abr': 3, 'abril': 3,
+			'may': 4, 'mayo': 4,
+			'jun': 5, 'junio': 5,
+			'jul': 6, 'julio': 6,
+			'ago': 7, 'agosto': 7,
+			'sep': 8, 'sept': 8, 'septiembre': 8, 'setiembre': 8,
+			'oct': 9, 'octubre': 9,
+			'nov': 10, 'noviembre': 10,
+			'dic': 11, 'diciembre': 11
 		};
-		
-		const datePattern = /(\d{1,2})\s+([a-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.)/i;
-		const match = fecha.match(datePattern);
-		
-		if (match) {
-			const [, day, monthSpanish, year, hour, minute, period] = match;
-			const monthIndex = monthMap[monthSpanish.toLowerCase()];
-			
-			if (monthIndex !== undefined) {
-				const isPM = period.toLowerCase().includes('p');
-				let hour24 = parseInt(hour);
-				
-				if (isPM && hour24 !== 12) {
-					hour24 += 12;
-				} else if (!isPM && hour24 === 12) {
-					hour24 = 0;
-				}
-				
-				return new Date(parseInt(year), monthIndex, parseInt(day), hour24, parseInt(minute));
-			}
+
+		// Normalize potential Unicode non-breaking spaces
+		const normalized = fecha.replace(/[\u00A0\u202F]/g, ' ').trim();
+
+		// Full format: "8 de agosto de 2025, 11:28:00 p.m. UTC-5" (seconds optional, supports UTC±HH[:MM])
+		const fullPattern =
+			/^(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)\s+UTC([+\-−])(\d{1,2})(?::?(\d{2}))?$/i;
+
+		// Previous short format: "8 ago 2025, 11:28 p.m."
+		const shortPattern =
+			/(\d{1,2})\s+([a-záéíóúñ]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.?m\.?|p\.?m\.?)$/i;
+
+		let m = normalized.match(fullPattern);
+		if (m) {
+			const [, d, monthName, y, hh, mm, ss = '0', period, sign, tzH, tzM = '0'] = m;
+			const monthIndex = monthMap[monthName.toLowerCase()];
+			if (monthIndex === undefined) return new Date(0);
+
+			let h = parseInt(hh, 10);
+			const isPM = period.toLowerCase().startsWith('p');
+			if (isPM && h !== 12) h += 12;
+			if (!isPM && h === 12) h = 0;
+
+			const tzHours = parseInt(tzH, 10) || 0;
+			const tzMinutes = parseInt(tzM, 10) || 0;
+			// UTC-5 => add 5h to get UTC epoch
+			const offsetMinutes = (sign === '-' || sign === '−' ? 1 : -1) * (tzHours * 60 + tzMinutes);
+
+			const utcMs = Date.UTC(
+				parseInt(y, 10),
+				monthIndex,
+				parseInt(d, 10),
+				h,
+				parseInt(mm, 10),
+				parseInt(ss, 10)
+			) + offsetMinutes * 60000;
+
+			return new Date(utcMs);
 		}
-		
+
+		// Fallback to short format (assumes local timezone, no seconds)
+		m = normalized.match(shortPattern);
+		if (m) {
+			const [, d, mon, y, hh, mm, period] = m;
+			const monthIndex = monthMap[mon.toLowerCase()];
+			if (monthIndex === undefined) return new Date(0);
+
+			let h = parseInt(hh, 10);
+			const isPM = period.toLowerCase().startsWith('p');
+			if (isPM && h !== 12) h += 12;
+			if (!isPM && h === 12) h = 0;
+
+			return new Date(parseInt(y, 10), monthIndex, parseInt(d, 10), h, parseInt(mm, 10));
+		}
+
 		return new Date(0); // Return epoch if parsing fails
 	}
 

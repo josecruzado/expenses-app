@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { gastos, loading, error, subscribeToGastos, unsubscribeFromGastos, formatCurrency, getCategoryIcon, getCategoryName, formatDate } from '$lib/firebase.js';
+	import { gastos, loading, error} from '$lib/firebase.js';
+    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
 	
 	// Local type definition
 	interface Gasto {
