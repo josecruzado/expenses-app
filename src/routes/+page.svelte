@@ -1,12 +1,30 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import Counter from './Counter.svelte';
-	import { gastos, loading, error } from '$lib/firebase.js';
-    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
+	import { gastos, loading, error, type Gasto } from '$lib/firebase.js';
+    import { formatCurrency, formatDate, gastosService, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
+    import AddExpenseModal from '$lib/components/AddExpenseModal.svelte';
+    import TransactionItem from '$lib/components/TransactionItem.svelte';
 
 	let currentMonthTotal = 0;
 	let transactionCount = 0;
 	let recentTransactions: any[] = [];
+
+	let showAddExpenseModal = false;
+    let addExpenseModalComponent: AddExpenseModal; // Referencia al componente del modal
+
+    // El evento ahora está correctamente tipado
+    async function handleSaveExpense(event: CustomEvent<Gasto>) {
+        const newGasto = event.detail;
+        const result = await gastosService.addGasto(newGasto);
+
+        if (result.success) {
+            showAddExpenseModal = false; // Cerramos el modal si todo va bien
+        } else {
+            // Si hay un error, se lo comunicamos al componente modal para que lo muestre
+            addExpenseModalComponent.showSaveError(result.error || 'An unknown error occurred.');
+        }
+    }
 	
 	// Helper function to parse Spanish date format
 	function parseSpanishDate(fecha: string): Date {
@@ -123,6 +141,15 @@
 	<meta name="description" content="Personal expenses tracking dashboard" />
 </svelte:head>
 
+{#if showAddExpenseModal}
+    <!-- Guardamos una referencia al componente con bind:this -->
+    <AddExpenseModal
+        bind:this={addExpenseModalComponent}
+        on:close={() => (showAddExpenseModal = false)}
+        on:save={handleSaveExpense}
+    />
+{/if}
+
 <section class="dashboard">
 
 	<div class="stats-grid">
@@ -186,10 +213,10 @@
 	</div>
 
 	<div class="action-buttons">
-		<button class="primary-button">
-			<span class="button-icon">➕</span>
-			<span>Add Expense</span>
-		</button>
+		<button class="primary-button" on:click={() => (showAddExpenseModal = true)}>
+            <span class="button-icon">➕</span>
+            <span>Add Expense</span>
+        </button>
 		
 		<a href="/expenses" class="secondary-button">
 			<span class="button-icon">📋</span>
@@ -209,18 +236,11 @@
 		{:else}
 			<div class="transaction-list">
 				{#each recentTransactions as gasto (gasto.id)}
-					<div class="transaction-item">
-						<div class="transaction-icon">{getCategoryIcon(gasto.categoria)}</div>
-						<div class="transaction-details">
-							<h4 class="transaction-title">{getCategoryName(gasto.categoria)}</h4>
-							<p class="transaction-date">{formatDate(gasto.fecha)}</p>
-							{#if gasto.nota}
-								<p class="transaction-note">{gasto.nota}</p>
-							{/if}
-						</div>
-						<div class="transaction-amount">{formatCurrency(gasto.monto)}</div>
-					</div>
-				{/each}
+                    <TransactionItem
+						{gasto}
+						showDeleteButton={false}
+					/>
+                {/each}
 			</div>
 		{/if}
 	</div>
@@ -349,66 +369,6 @@
 		gap: var(--spacing-xs);
 	}
 	
-	.transaction-item {
-		background: var(--color-bg-secondary);
-		border-radius: var(--radius-md);
-		padding: var(--spacing-md);
-		display: flex;
-		align-items: center;
-		gap: var(--spacing-md);
-		border: 1px solid var(--color-separator);
-		transition: background-color 0.2s ease, transform 0.2s ease;
-	}
-	
-	.transaction-item:active {
-		background: var(--color-fill-tertiary);
-		transform: scale(0.99);
-	}
-	
-	.transaction-icon {
-		width: 40px;
-		height: 40px;
-		background: var(--color-fill-secondary);
-		border-radius: var(--radius-sm);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 18px;
-		flex-shrink: 0;
-	}
-	
-	.transaction-details {
-		flex: 1;
-		min-width: 0;
-	}
-	
-	.transaction-title {
-		font-size: var(--font-size-body);
-		font-weight: var(--font-weight-medium);
-		margin: 0 0 2px 0;
-		color: var(--color-text-primary);
-	}
-	
-	.transaction-date {
-		font-size: var(--font-size-footnote);
-		color: var(--color-text-secondary);
-		margin: 0;
-	}
-	
-	.transaction-amount {
-		font-size: var(--font-size-body);
-		font-weight: var(--font-weight-semibold);
-		color: var(--color-red);
-		text-align: right;
-	}
-	
-	.transaction-note {
-		font-size: var(--font-size-footnote);
-		color: var(--color-text-tertiary);
-		margin: 2px 0 0 0;
-		font-style: italic;
-	}
-	
 	.loading-message,
 	.error-message,
 	.empty-message {
@@ -456,9 +416,14 @@
 	
 	/* Large screen adjustments */
 	@media (min-width: 768px) {
-		.stats-grid {
-			grid-template-columns: repeat(4, 1fr);
-		}
+		.dashboard {
+            /* Añade un margen superior para bajar el contenido en pantallas de PC */
+            margin-top: var(--spacing-lg);
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(4, 1fr);
+        }
 		
 		.action-buttons {
 			max-width: 400px;

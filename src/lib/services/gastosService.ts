@@ -201,7 +201,7 @@ class GastosService {
 	}
 
 	// Agregar nuevo gasto
-	async addGasto(gasto: Omit<Gasto, 'id' | 'uid'>): Promise<string> {
+	async addGasto(gasto: Omit<Gasto, 'id' | 'uid'>): Promise<{ success: true; id: string } | { success: false; error: string }> {
 		try {
 			const user = get(authStore).user;
 			if (!user) {
@@ -211,21 +211,22 @@ class GastosService {
 			const gastosRef = this.getUserGastosRef();
 			
 			// Convertir fecha string a timestamp para cumplir con las reglas
-			const fechaTimestamp = this.convertirFechaATimestamp(gasto.fecha);
+			const fechaTimestamp = this.convertirTimestampAFecha(gasto.fecha);
 			
 			const gastoData = {
 				monto: gasto.monto,
-				fecha: fechaTimestamp, // Timestamp requerido por las reglas
+				fecha: fechaTimestamp,
 				nota: gasto.nota,
 				categoria: gasto.categoria,
 				// No incluimos uid ni createdAt/updatedAt ya que no están en las reglas
 			};
 
 			const docRef = await addDoc(gastosRef, gastoData);
-			return docRef.id;
-		} catch (error) {
+			return { success: true, id: docRef.id };
+		} catch (e) {
+			const error = e as Error;
 			console.error('Error al agregar gasto:', error);
-			throw error;
+            return { success: false, error: error.message || 'Ocurrió un error desconocido.' };
 		}
 	}
 

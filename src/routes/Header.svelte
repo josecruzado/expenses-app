@@ -147,10 +147,6 @@
     color: white;
   }
 
-  nav li[aria-current='page'] a .nav-icon {
-    filter: brightness(0) invert(1);
-  }
-
   nav a {
     display: flex;
     align-items: center;

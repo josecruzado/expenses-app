@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { gastos, loading, error} from '$lib/firebase.js';
-    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
+    import { formatCurrency, formatDate, gastosService, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
+    import TransactionItem from '$lib/components/TransactionItem.svelte';
 	
 	// Local type definition
 	interface Gasto {
@@ -15,6 +16,7 @@
 	let searchTerm = '';
 	let selectedCategory = '';
 	let sortOrder = 'date-desc'; // 'date-desc', 'date-asc', 'amount-desc', 'amount-asc'
+	let deletingIds = new Set<string>(); // Track which items are being deleted
 	
 	// Get unique categories for filter
 	$: categories = [...new Set($gastos.map((gasto: Gasto) => getCategoryName(gasto.categoria)))].sort();
@@ -77,6 +79,33 @@
 	// Calculate total of filtered results
 	$: totalAmount = filteredGastos.reduce((sum: number, gasto: Gasto) => sum + Math.abs(gasto.monto), 0);
 
+	// Handle delete expense
+	async function handleDeleteGasto(id: string) {
+		if (deletingIds.has(id)) return;
+		
+		// Add haptic feedback for iOS
+		if (navigator.vibrate) {
+			navigator.vibrate(50);
+		}
+		
+		try {
+			deletingIds = new Set([...deletingIds, id]);
+			await gastosService.deleteGasto(id);
+			
+		} catch (err) {
+			console.error('Error deleting expense:', err);
+			// Show a more native-like alert
+			if ('webkitRequestFullScreen' in document.documentElement) {
+				// iOS-like alert
+				alert('No se pudo eliminar el gasto. Inténtalo de nuevo.');
+			} else {
+				alert('Error al eliminar el gasto. Por favor, inténtalo de nuevo.');
+			}
+		} finally {
+			deletingIds = new Set([...deletingIds].filter(deletingId => deletingId !== id));
+		}
+	}
+
 	onMount(() => {
 		subscribeToGastos();
 	});
@@ -89,6 +118,7 @@
 <svelte:head>
 	<title>All Expenses - Expenses</title>
 	<meta name="description" content="View all your expenses" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=yes" />
 </svelte:head>
 
 <section class="expenses">
@@ -139,20 +169,14 @@
 		</div>
 	{:else}
 		<div class="expenses-list">
-			{#each filteredGastos as gasto (gasto.id)}
-				<div class="expense-item">
-					<div class="expense-icon">{getCategoryIcon(gasto.categoria)}</div>
-					<div class="expense-details">
-						<h3 class="expense-title">{getCategoryName(gasto.categoria)}</h3>
-						<p class="expense-date">{formatDate(gasto.fecha)}</p>
-						{#if gasto.nota}
-							<p class="expense-note">{gasto.nota}</p>
-						{/if}
-					</div>
-					<div class="expense-amount">{formatCurrency(gasto.monto)}</div>
-				</div>
-			{/each}
-		</div>
+            {#each filteredGastos as gasto (gasto.id)}
+                <TransactionItem
+                    {gasto}
+                    isDeleting={deletingIds.has(gasto.id)}
+                    on:delete={() => handleDeleteGasto(gasto.id)}
+                />
+            {/each}
+        </div>
 	{/if}
 </section>
 
@@ -160,13 +184,17 @@
 	.expenses {
 		display: flex;
 		flex-direction: column;
-		gap: var(--spacing-lg);
+		gap: var(--spacing-sm);
 		padding-bottom: var(--spacing-xl);
+		-webkit-overflow-scrolling: touch;
+		/* min-height: 100vh;  🔴 Esto empujaba todo al medio */
+		width: 100%;
 	}
 	
 	.page-header {
 		text-align: center;
 		margin-bottom: var(--spacing-md);
+		padding-top: var(--spacing-sm);
 	}
 	
 	.page-title {
@@ -206,6 +234,7 @@
 		color: var(--color-text-primary);
 		font-size: var(--font-size-body);
 		box-sizing: border-box;
+		-webkit-appearance: none; /* Remove iOS styling */
 	}
 	
 	.search-input:focus {
@@ -228,6 +257,7 @@
 		color: var(--color-text-primary);
 		font-size: var(--font-size-body);
 		cursor: pointer;
+		-webkit-appearance: none; /* Remove iOS styling */
 	}
 	
 	.filter-select:focus {
@@ -240,68 +270,13 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--spacing-sm);
-	}
-	
-	.expense-item {
-		background: var(--color-bg-secondary);
-		border-radius: var(--radius-lg);
-		padding: var(--spacing-md);
-		display: flex;
-		align-items: center;
-		gap: var(--spacing-md);
-		border: 1px solid var(--color-separator);
-		transition: all 0.2s ease;
-	}
-	
-	.expense-item:active {
-		background: var(--color-fill-tertiary);
-		transform: scale(0.99);
-	}
-	
-	.expense-icon {
-		width: 48px;
-		height: 48px;
-		background: var(--color-fill-secondary);
-		border-radius: var(--radius-md);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 20px;
-		flex-shrink: 0;
-	}
-	
-	.expense-details {
 		flex: 1;
-		min-width: 0;
+		width: 100%;
 	}
 	
-	.expense-title {
-		font-size: var(--font-size-headline);
-		font-weight: var(--font-weight-semibold);
-		margin: 0 0 var(--spacing-xs) 0;
-		color: var(--color-text-primary);
-	}
-	
-	.expense-date {
-		font-size: var(--font-size-footnote);
-		color: var(--color-text-secondary);
-		margin: 0;
-		margin-bottom: 2px;
-	}
-	
-	.expense-note {
-		font-size: var(--font-size-footnote);
-		color: var(--color-text-tertiary);
-		margin: 0;
-		font-style: italic;
-	}
-	
-	.expense-amount {
-		font-size: var(--font-size-title-3);
-		font-weight: var(--font-weight-bold);
-		color: var(--color-red);
-		text-align: right;
-		flex-shrink: 0;
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 	
 	.loading-message,
@@ -330,30 +305,75 @@
 	
 	/* Responsive adjustments */
 	@media (max-width: 480px) {
-		.page-title {
-			font-size: var(--font-size-title-1);
+		.expenses {
+			padding: 0;
+			gap: var(--spacing-xs);
+			margin: 0;
+			/* Quitamos padding-top heredado del safe-area */
+			padding-top: 0 !important;
+		}
+
+		.page-header {
+			margin-bottom: var(--spacing-xs);
+			padding-top: 0; /* 🔴 Esto evita el hueco en móvil */
 		}
 		
-		.filter-controls {
-			flex-direction: column;
+        .page-title {
+            font-size: var(--font-size-title-1);
+			margin-bottom: var(--spacing-xs);
+        }
+		
+		.page-subtitle {
+			font-size: var(--font-size-callout);
+			margin-bottom: 0;
 		}
 		
-		.expense-item {
+		.filters-section {
 			padding: var(--spacing-sm);
 		}
 		
-		.expense-icon {
-			width: 40px;
-			height: 40px;
-			font-size: 18px;
+        .filter-controls {
+            flex-direction: column;
+        }
+		
+		.expenses-list {
+			gap: var(--spacing-xs);
 		}
 		
-		.expense-title {
-			font-size: var(--font-size-body);
+		.loading-message,
+		.error-message,
+		.empty-message {
+			padding: var(--spacing-lg);
+			margin: var(--spacing-xs);
+		}
+    }
+	
+	/* Safe area support for iPhone X+ */
+	@media screen and (max-width: 480px) {
+		.expenses {
+			padding-left: max(var(--spacing-xs), env(safe-area-inset-left));
+			padding-right: max(var(--spacing-xs), env(safe-area-inset-right));
+			padding-bottom: max(var(--spacing-xl), env(safe-area-inset-bottom));
+			padding-top: max(var(--spacing-xs), env(safe-area-inset-top, var(--spacing-xs)));
+		}
+	}
+	
+	/* Mejoras adicionales para móvil */
+	@media (max-width: 768px) {
+		.expenses {
+			max-width: 100vw;
+			overflow-x: hidden;
 		}
 		
-		.expense-amount {
-			font-size: var(--font-size-headline);
+		.page-header,
+		.filters-section,
+		.expenses-list {
+			width: 100%;
+		}
+		
+		.search-input,
+		.filter-select {
+			font-size: 16px; /* Evita zoom en iOS */
 		}
 	}
 </style>
