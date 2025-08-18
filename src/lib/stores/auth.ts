@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider } from '$lib/firebase';
+import { auth, googleProvider, translateFirebaseError } from '$lib/firebase';
 import type { User } from 'firebase/auth';
 
 interface AuthState {
@@ -36,7 +36,7 @@ export const authMethods = {
       const result = await signInWithEmailAndPassword(auth, email, password);
       return { success: true, user: result.user };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: translateFirebaseError(error) };
     }
   },
 
@@ -45,7 +45,7 @@ export const authMethods = {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       return { success: true, user: result.user };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: translateFirebaseError(error) };
     }
   },
 
@@ -54,7 +54,7 @@ export const authMethods = {
       const result = await signInWithPopup(auth, googleProvider);
       return { success: true, user: result.user };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: translateFirebaseError(error) };
     }
   },
 
@@ -63,7 +63,7 @@ export const authMethods = {
       await signOut(auth);
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message };
+      return { success: false, error: translateFirebaseError(error) };
     }
   }
 };

@@ -8,6 +8,15 @@
   let confirmPassword = '';
   let loading = false;
   let error = '';
+  let showPassword = false;
+  let showConfirmPassword = false;
+  
+  // Variables para validaciones
+  let emailValid = true;
+  let passwordValid = true;
+  let emailTouched = false;
+  let passwordTouched = false;
+
   onMount(() => {
     document.body.classList.add('login-lock');
   });
@@ -16,25 +25,62 @@
     document.body.classList.remove('login-lock');
   });
 
+  // Validación de email
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Validación de contraseña
+  const validatePassword = (password: string): boolean => {
+    return password.length >= 6;
+  };
+
+  // Handlers para validaciones en tiempo real
+  const handleEmailInput = () => {
+    emailTouched = true;
+    emailValid = validateEmail(email);
+  };
+
+  const handlePasswordInput = () => {
+    passwordTouched = true;
+    passwordValid = validatePassword(password);
+  };
+
   const toggleMode = () => {
     isSignUp = !isSignUp;
     error = '';
     email = '';
     password = '';
     confirmPassword = '';
+    showPassword = false;
+    showConfirmPassword = false;
+    emailValid = true;
+    passwordValid = true;
+    emailTouched = false;
+    passwordTouched = false;
   };
 
   const handleEmailAuth = async () => {
+    // Validar campos requeridos
     if (!email || !password) {
       error = 'Por favor completa todos los campos';
       return;
     }
 
+    // Validar formato de email
+    if (!validateEmail(email)) {
+      error = 'Por favor ingresa un correo electrónico válido';
+      return;
+    }
+
+    // Validar contraseñas coinciden en registro
     if (isSignUp && password !== confirmPassword) {
       error = 'Las contraseñas no coinciden';
       return;
     }
 
+    // Validar longitud de contraseña
     if (password.length < 6) {
       error = 'La contraseña debe tener al menos 6 caracteres';
       return;
@@ -48,7 +94,7 @@
       : await authMethods.signInWithEmail(email, password);
 
     if (!result.success) {
-      error = result.error;
+      error = result.error?? 'Ocurrió un error. Intenta nuevamente';
     }
 
     loading = false;
@@ -61,7 +107,7 @@
     const result = await authMethods.signInWithGoogle();
     
     if (!result.success) {
-      error = result.error;
+      error = result.error?? 'Ocurrió un error. Intenta nuevamente';
     }
     
     loading = false;
@@ -77,8 +123,6 @@
 
 <div class="login-container">
   <div class="login-card">
-
-
     <div class="logo">
       <div class="logo-icon">💰</div>
       <h1>Expenses</h1>
@@ -100,8 +144,9 @@
       {/if}
 
       <form on:submit|preventDefault={handleEmailAuth}>
+        <!-- Campo Email -->
         <div class="input-group">
-          <div class="input-wrapper">
+          <div class="input-wrapper" class:error={emailTouched && !emailValid}>
             <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
               <polyline points="22,6 12,13 2,6"/>
@@ -110,29 +155,66 @@
               type="email"
               placeholder="Correo electrónico"
               bind:value={email}
+              on:input={handleEmailInput}
               on:keydown={handleKeydown}
               disabled={loading}
+              class:error={emailTouched && !emailValid}
             />
+            {#if emailTouched && emailValid && email}
+              <svg class="validation-icon success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20,6 9,17 4,12"/>
+              </svg>
+            {/if}
           </div>
+          {#if emailTouched && !emailValid && email}
+            <div class="field-error">Ingresa un correo electrónico válido</div>
+          {/if}
         </div>
 
+        <!-- Campo Contraseña -->
         <div class="input-group">
-          <div class="input-wrapper">
+          <div class="input-wrapper" class:error={passwordTouched && !passwordValid}>
             <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <circle cx="12" cy="16" r="1"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               placeholder="Contraseña"
               bind:value={password}
+              on:input={handlePasswordInput}
               on:keydown={handleKeydown}
               disabled={loading}
+              class:error={passwordTouched && !passwordValid}
             />
+            {#if password}
+              <button
+                type="button"
+                class="toggle-password"
+                on:click={() => showPassword = !showPassword}
+                disabled={loading}
+              >
+                {#if showPassword}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                {:else}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                {/if}
+              </button>
+            {/if}
           </div>
+          {#if passwordTouched && !passwordValid && password}
+            <div class="field-error">La contraseña debe tener al menos 6 caracteres</div>
+          {/if}
         </div>
 
+        <!-- Campo Confirmar Contraseña (solo en registro) -->
         {#if isSignUp}
           <div class="input-group">
             <div class="input-wrapper">
@@ -142,13 +224,36 @@
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
               <input
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Confirmar contraseña"
                 bind:value={confirmPassword}
                 on:keydown={handleKeydown}
                 disabled={loading}
               />
+              {#if confirmPassword}
+                <button
+                  type="button"
+                  class="toggle-password"
+                  on:click={() => showConfirmPassword = !showConfirmPassword}
+                  disabled={loading}
+                >
+                  {#if showConfirmPassword}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  {/if}
+                </button>
+              {/if}
             </div>
+            {#if confirmPassword && password !== confirmPassword}
+              <div class="field-error">Las contraseñas no coinciden</div>
+            {/if}
           </div>
         {/if}
 
@@ -207,12 +312,14 @@
     --text-secondary: #6b7280;
     --border-color: #e5e7eb;
     --border-focus: #007aff;
+    --border-error: #ef4444;
     --input-bg: #ffffff;
     --input-disabled: #f9fafb;
     --error-bg: #fef2f2;
     --error-border: #fecaca;
     --error-text: #dc2626;
     --success-gradient: linear-gradient(135deg, #007aff 0%, #0051d9 100%);
+    --success-color: #10b981;
     --divider-bg: #e5e7eb;
     --google-btn-bg: #ffffff;
     --google-btn-border: #e5e7eb;
@@ -220,7 +327,7 @@
     --toggle-color: #007aff;
   }
 
-  /* Dark mode variables - se aplican automáticamente con prefers-color-scheme */
+  /* Dark mode variables */
   @media (prefers-color-scheme: dark) {
     :root {
       --bg-gradient: radial-gradient(ellipse at center, rgba(0, 122, 255, 0.15) 0%, transparent 50%), #000000;
@@ -230,12 +337,14 @@
       --text-secondary: #9ca3af;
       --border-color: #374151;
       --border-focus: #409cff;
+      --border-error: #f87171;
       --input-bg: #374151;
       --input-disabled: #4b5563;
       --error-bg: #991b1b;
       --error-border: #dc2626;
       --error-text: #fca5a5;
       --success-gradient: linear-gradient(135deg, #409cff 0%, #007aff 100%);
+      --success-color: #34d399;
       --divider-bg: #374151;
       --google-btn-bg: #374151;
       --google-btn-border: #4b5563;
@@ -326,6 +435,14 @@
     align-items: center;
   }
 
+  .input-wrapper.error input {
+    border-color: var(--border-error);
+  }
+
+  .input-wrapper.error .input-icon {
+    color: var(--border-error);
+  }
+
   .input-icon {
     position: absolute;
     left: 1rem;
@@ -338,9 +455,45 @@
     color: var(--border-focus);
   }
 
+  .validation-icon {
+    position: absolute;
+    right: 1rem;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .validation-icon.success {
+    color: var(--success-color);
+  }
+
+  .toggle-password {
+    position: absolute;
+    right: 1rem;
+    z-index: 1;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .toggle-password:hover:not(:disabled) {
+    color: var(--border-focus);
+  }
+
+  .toggle-password:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   input {
     width: 100%;
-    padding: 0.875rem 1rem 0.875rem 3rem;
+    padding: 0.875rem 3rem 0.875rem 3rem;
     border: 2px solid var(--border-color);
     border-radius: 12px;
     font-size: 1rem;
@@ -348,6 +501,10 @@
     box-sizing: border-box;
     background: var(--input-bg);
     color: var(--text-primary);
+  }
+
+  input.error {
+    border-color: var(--border-error);
   }
 
   input::placeholder {
@@ -360,10 +517,22 @@
     box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
   }
 
+  input.error:focus {
+    border-color: var(--border-error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  }
+
   input:disabled {
     background-color: var(--input-disabled);
     cursor: not-allowed;
     opacity: 0.7;
+  }
+
+  .field-error {
+    color: var(--error-text);
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+    margin-left: 0.5rem;
   }
 
   .btn-primary {
