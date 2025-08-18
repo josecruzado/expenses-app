@@ -36,27 +36,39 @@ export function parseSpanishDate(fecha: string): Date {
 }
 
 export function formatCurrency(amount: number): string {
-	const absAmount = Math.abs(amount);
-	const prefix = amount < 0 ? '-' : '';
-	return `${prefix}$${absAmount.toFixed(2)}`;
+    return new Intl.NumberFormat('es-PE', {
+        style: 'currency',
+        currency: 'PEN',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(amount);
 }
 
+// Nuevo: separa icono y texto aunque no haya espacio
+export function splitCategoria(categoria: string): { icon: string; name: string } {
+	if (!categoria) return { icon: '', name: '' };
+	const s = String(categoria).trim();
+	// Captura un emoji (incluye ZWJ y variation selectors) al inicio, con espacio opcional después
+	const m = s.match(/^(\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)?)(?:\s+)?(.*)$/u);
+	if (m) {
+		return { icon: m[1] || '', name: (m[2] || '').trim() };
+	}
+	// Fallback: si empieza con no alfanumérico, toma el primer caracter como icono
+	const first = s[0];
+	if (/\p{Letter}|\p{Number}/u.test(first)) {
+		return { icon: '', name: s };
+	}
+	return { icon: first, name: s.slice(1).trim() };
+}
+
+// Reemplazar estas funciones para usar el split
 export function getCategoryIcon(categoria: string): string {
-	if (categoria.includes('🏥')) return '🏥';
-	if (categoria.includes('🍽️')) return '🍽️';
-	if (categoria.includes('🚗')) return '🚗';
-	if (categoria.includes('🏡')) return '🏡';
-	if (categoria.includes('🛒')) return '🛒';
-	if (categoria.includes('⛽')) return '⛽';
-	if (categoria.includes('☕')) return '☕';
-	if (categoria.includes('🎯')) return '🎯';
-	if (categoria.includes('💊')) return '💊';
-	if (categoria.includes('🎮')) return '🎮';
-	return '💰'; // Default icon
+	const { icon } = splitCategoria(categoria);
+	return icon || '💰'; // Default icon
 }
-
 export function getCategoryName(categoria: string): string {
-	return categoria.replace(/^[^\s]+\s/, '').trim();
+	const { name } = splitCategoria(categoria);
+	return name || categoria;
 }
 
 export function formatDate(fecha: string): string {
@@ -213,6 +225,7 @@ class GastosService {
 			// Convertir fecha string a timestamp para cumplir con las reglas
 			const fechaTimestamp = this.convertirTimestampAFecha(gasto.fecha);
 			
+
 			const gastoData = {
 				monto: gasto.monto,
 				fecha: fechaTimestamp,

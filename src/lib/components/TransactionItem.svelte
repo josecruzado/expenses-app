@@ -1,6 +1,6 @@
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName } from '$lib/services/gastosService';
+    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName} from '$lib/services/gastosService';
 
     // Props
     export let gasto: {
@@ -234,12 +234,30 @@
     /* Desktop adjustments */
     @media (min-width: 768px) {
         .expense-details {
-            flex-direction: row;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr; /* título, fecha, nota */
             align-items: center;
-            justify-content: space-between;
+            gap: 8px;
+            min-width: 0;
         }
-        .expense-date, .expense-note {
-            margin-left: 8px;
+        .expense-title {
+            grid-column: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .expense-date {
+            grid-column: 2;
+            text-align: center;
+            min-width: 0;
+        }
+        .expense-note {
+            grid-column: 3;
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
         }
     }
 </style>

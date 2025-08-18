@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Counter from './Counter.svelte';
 	import { gastos, loading, error, type Gasto } from '$lib/firebase.js';
-    import { formatCurrency, formatDate, gastosService, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
+    import { formatCurrency, formatDate, gastosService, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
     import AddExpenseModal from '$lib/components/AddExpenseModal.svelte';
     import TransactionItem from '$lib/components/TransactionItem.svelte';
 
@@ -119,7 +119,7 @@
 			
 			currentMonthTotal = monthlyExpenses.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0);
 			transactionCount = monthlyExpenses.length;
-			recentTransactions = $gastos.slice(0, 3); // Get 3 most recent transactions
+			recentTransactions = $gastos.slice(0, 4); // Get 3 most recent transactions
 		} else {
 			currentMonthTotal = 0;
 			transactionCount = 0;
@@ -160,7 +160,7 @@
 					{#if $loading}
 						Loading...
 					{:else}
-						${currentMonthTotal.toFixed(2)}
+						{formatCurrency(currentMonthTotal)}
 					{/if}
 				</h3>
 				<p class="stat-label">This Month</p>

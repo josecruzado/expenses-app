@@ -127,7 +127,7 @@
 		{#if !$loading}
 			<p class="page-subtitle">
 				{filteredGastos.length} transaction{filteredGastos.length !== 1 ? 's' : ''} 
-				• Total: ${totalAmount.toFixed(2)}
+				• Total: {formatCurrency(totalAmount)}
 			</p>
 		{/if}
 	</header>
