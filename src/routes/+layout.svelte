@@ -21,6 +21,13 @@
 
 	onMount(async () => {
 		if (browser) {
+			// Marca la plataforma en <html> para estilos condicionales
+			const ua = navigator.userAgent || navigator.vendor || '';
+			if (/iPad|iPhone|iPod/.test(ua)) {
+				document.documentElement.classList.add('is-ios');
+			} else if (/Android/i.test(ua)) {
+				document.documentElement.classList.add('is-android');
+			}
 			// Initialize Firebase Auth listener
 			unsubscribeAuth = initAuthListener();
 
@@ -77,7 +84,8 @@
         display: grid;
         /* Fila 1 (Header) toma su altura natural. Fila 2 (main) toma el resto del espacio. */
         grid-template-rows: auto 1fr;
-        height: 100vh; /* Opcional: height: 100dvh; para móviles */
+        min-height: 100vh;   /* fallback */
+        min-height: 100dvh;  /* correcto en móviles/PWA */
         background-color: var(--color-bg-primary);
     }
 

@@ -105,15 +105,17 @@
     top: 0;
     z-index: 100;
 
-    /* Esta técnica extiende el fondo del header hasta el borde superior de la pantalla */
-    margin-top: calc(-1 * var(--safe-area-inset-top));
-    /* Y este padding empuja el contenido hacia abajo para que no lo tape el notch */
-    padding-top: calc(var(--safe-area-inset-top) + var(--spacing-sm));
-
-    /* Padding para los lados y abajo */
+    /* Por defecto (Android/desktop): SIN margen negativo, SIN padding con safe-area */
+    padding-top: var(--spacing-sm);
     padding-left: max(var(--safe-area-inset-left), var(--spacing-md));
     padding-right: max(var(--safe-area-inset-right), var(--spacing-md));
     padding-bottom: var(--spacing-sm);
+  }
+
+  /* Solo iOS: aplica el hack para que el fondo se extienda al notch y el contenido no se tape */
+  :root.is-ios header {
+    margin-top: calc(-1 * var(--safe-area-inset-top));
+    padding-top: calc(var(--safe-area-inset-top) + var(--spacing-sm));
   }
 
   .header-content {
