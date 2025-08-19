@@ -202,7 +202,7 @@
 					{#if $loading}
 						-
 					{:else if $gastos.length > 0}
-						{Math.max(...$gastos.map(g => g.monto)).toFixed(0)}
+						{formatCurrency(Math.max(...$gastos.map(g => g.monto)))}
 					{:else}
 						$0
 					{/if}
