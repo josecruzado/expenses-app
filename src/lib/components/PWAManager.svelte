@@ -102,23 +102,23 @@
 		<div class="banner-content">
 			<div class="banner-icon">🍎</div>
 			<div class="banner-text">
-				<h4>Install on iPhone</h4>
-				<p>Tap the <strong>Share</strong> button <span class="share-icon">⬆️</span> then <strong>"Add to Home Screen"</strong></p>
+				<h4>Instalar en iPhone</h4>
+				<p>Dale tap en el boton de <strong>Share</strong> <span class="share-icon">⬆️</span> luego <strong>"Agregar a inicio"</strong></p>
 			</div>
 			<button class="dismiss-button" onclick={dismissIOSInstructions}>✕</button>
 		</div>
 		<div class="ios-steps">
 			<div class="step">
 				<span class="step-number">1</span>
-				<span>Tap <span class="share-icon">⬆️</span> in Safari</span>
+				<span>Dale Tap <span class="share-icon">⬆️</span> en Safari</span>
 			</div>
 			<div class="step">
 				<span class="step-number">2</span>
-				<span>Scroll and tap "Add to Home Screen"</span>
+				<span>Scrollea y dale tap en "Agregar a inicio"</span>
 			</div>
 			<div class="step">
 				<span class="step-number">3</span>
-				<span>Tap "Add" in the top-right corner</span>
+				<span>Tap "Agregar" en la esquina superior derecha</span>
 			</div>
 		</div>
 	</div>

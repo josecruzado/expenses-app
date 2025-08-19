@@ -123,10 +123,10 @@
 
 <section class="expenses">
 	<header class="page-header">
-		<h1 class="page-title">All Expenses</h1>
+		<h1 class="page-title">Todos los Gastos</h1>
 		{#if !$loading}
 			<p class="page-subtitle">
-				{filteredGastos.length} transaction{filteredGastos.length !== 1 ? 's' : ''} 
+				{filteredGastos.length} transacción{filteredGastos.length !== 1 ? 'es' : ''} 
 				• Total: {formatCurrency(totalAmount)}
 			</p>
 		{/if}
@@ -136,7 +136,7 @@
 		<div class="search-box">
 			<input 
 				type="text" 
-				placeholder="Search expenses..." 
+				placeholder="Buscar gastos..." 
 				bind:value={searchTerm}
 				class="search-input"
 			/>
@@ -144,17 +144,17 @@
 		
 		<div class="filter-controls">
 			<select bind:value={selectedCategory} class="filter-select">
-				<option value="">All Categories</option>
+				<option value="">Todas las categorias</option>
 				{#each categories as category}
 					<option value={category}>{category}</option>
 				{/each}
 			</select>
 			
 			<select bind:value={sortOrder} class="filter-select">
-				<option value="date-desc">Newest First</option>
-				<option value="date-asc">Oldest First</option>
-				<option value="amount-desc">Highest Amount</option>
-				<option value="amount-asc">Lowest Amount</option>
+				<option value="date-desc">Más Reciente</option>
+				<option value="date-asc">Más Antiguo</option>
+				<option value="amount-desc">Mayor Cantidad</option>
+				<option value="amount-asc">Menor Cantidad</option>
 			</select>
 		</div>
 	</div>

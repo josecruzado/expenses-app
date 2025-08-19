@@ -45,13 +45,13 @@
         <li aria-current={page.url.pathname === '/expenses' ? 'page' : undefined}>
           <a href="/expenses">
             <span class="nav-icon">💰</span>
-            <span>Expenses</span>
+            <span>Gastos</span>
           </a>
         </li>
         <li aria-current={page.url.pathname === '/about' ? 'page' : undefined}>
           <a href="/about">
             <span class="nav-icon">ℹ️</span>
-            <span>About</span>
+            <span>Acerca de</span>
           </a>
         </li>
       </ul>

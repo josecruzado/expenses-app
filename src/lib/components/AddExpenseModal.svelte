@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { formatCurrency } from '$lib/services/gastosService';
     import { createEventDispatcher, onMount } from 'svelte';
     import { fly } from 'svelte/transition';
 
@@ -17,12 +18,12 @@
     const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
 
     const categories = [
-        { id: 'comida', name: 'Comida', icon: '🍽️' },
-        { id: 'transporte', name: 'Transporte', icon: '🚗' },
-        { id: 'salud', name: 'Salud', icon: '🏥' },
-        { id: 'entretenimiento', name: 'Entretenimiento', icon: '🎬' },
-        { id: 'hogar', name: 'Hogar', icon: '🏠' },
-        { id: 'otros', name: 'Otros', icon: '📦' }
+        { id: 'Comida', name: 'Comida', icon: '🍽️' },
+        { id: 'Transporte', name: 'Transporte', icon: '🚗' },
+        { id: 'Salud', name: 'Salud', icon: '🏥' },
+        { id: 'Entretenimiento', name: 'Entretenimiento', icon: '🎬' },
+        { id: 'Hogar', name: 'Hogar', icon: '🏠' },
+        { id: 'Otros', name: 'Otros', icon: '📦' }
     ];
 
     let dialogElement: HTMLDialogElement | null = null;
@@ -77,7 +78,7 @@
                         {
                             role: "system",
                             content: `Eres un asistente que clasifica gastos personales. Responde estrictamente en JSON con la forma {"categoria": string, "icono": string}. 
-                            Las categorías disponibles son: comida, transporte, salud, entretenimiento, hogar, otros.
+                            Las categorías disponibles son: Comida, Transporte, Salud, Entretenimiento, Hogar, Otros.
                             Elige un emoji adecuado como icono. Sin texto extra.`,
                         },
                         {
@@ -205,7 +206,7 @@
         <div class="success-overlay" transition:fly={{ y: 20, duration: 300 }}>
             <div class="success-icon">✅</div>
             <h3>¡Gasto guardado!</h3>
-            <p>${amount?.toFixed(2)}</p>
+            <p>{formatCurrency(Number(amount))}</p>
         </div>
     {:else}
         <div class="modal-content">

@@ -163,7 +163,7 @@
 						{formatCurrency(currentMonthTotal)}
 					{/if}
 				</h3>
-				<p class="stat-label">This Month</p>
+				<p class="stat-label">Mes Actual</p>
 			</div>
 		</div>
 		
@@ -177,7 +177,7 @@
 						{transactionCount}
 					{/if}
 				</h3>
-				<p class="stat-label">Transactions</p>
+				<p class="stat-label">Número Gastos</p>
 			</div>
 		</div>
 		
@@ -207,7 +207,7 @@
 						$0
 					{/if}
 				</h3>
-				<p class="stat-label">Largest Expense</p>
+				<p class="stat-label">Mayor Consumo</p>
 			</div>
 		</div>
 	</div>
@@ -215,17 +215,17 @@
 	<div class="action-buttons">
 		<button class="primary-button" on:click={() => (showAddExpenseModal = true)}>
             <span class="button-icon">➕</span>
-            <span>Add Expense</span>
+            <span>Agregar Gasto</span>
         </button>
 		
 		<a href="/expenses" class="secondary-button">
 			<span class="button-icon">📋</span>
-			<span>View All</span>
+			<span>Ver Todos</span>
 		</a>
 	</div>
 
 	<div class="recent-section">
-		<h2 class="section-title">Recent Transactions</h2>
+		<h2 class="section-title">Transacciones Recientes</h2>
 		
 		{#if $loading}
 			<div class="loading-message">Loading transactions...</div>
