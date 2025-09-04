@@ -375,6 +375,49 @@ class GastosService {
 		
 		return `${dia} ${mes} ${año}, ${horas}:${minutos} ${periodo}`;
 	}
+
+	//Categorias
+	// Referencia a la colección de categorías del usuario
+	private getUserCategoriesRef() {
+		const user = get(authStore).user;
+		if (!user) {
+		throw new Error('Usuario no autenticado');
+		}
+		return collection(db, 'users', user.uid, 'categories');
+	}
+
+	// Crear nueva categoría
+	async addCategoria(nombre: string, isFavorite = true) {
+		const ref = this.getUserCategoriesRef();
+		const docRef = await addDoc(ref, {
+		name: nombre,
+		isFavorite,
+		createdAt: Timestamp.now()
+		});
+		return { id: docRef.id, name: nombre, isFavorite };
+	}
+
+	// Listar categorías del usuario
+	async getCategorias(): Promise<{ id: string; name: string; isFavorite: boolean }[]> {
+		const ref = this.getUserCategoriesRef();
+		const snap = await getDocs(ref);
+		return snap.docs.map(d => ({
+		id: d.id,
+		...(d.data() as any)
+		}));
+	}
+
+	// Actualizar categoría (ej: cambiar nombre, marcar favorito)
+	async updateCategoria(id: string, updates: Partial<{ name: string; isFavorite: boolean }>) {
+		const ref = doc(this.getUserCategoriesRef(), id);
+		await updateDoc(ref, updates);
+	}
+
+	// Eliminar categoría
+	async deleteCategoria(id: string) {
+		const ref = doc(this.getUserCategoriesRef(), id);
+		await deleteDoc(ref);
+	}
 }
 
 // Exportar instancia del servicio

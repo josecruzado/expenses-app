@@ -48,10 +48,10 @@
             <span>Gastos</span>
           </a>
         </li>
-        <li aria-current={page.url.pathname === '/about' ? 'page' : undefined}>
-          <a href="/about">
-            <span class="nav-icon">ℹ️</span>
-            <span>Acerca de</span>
+        <li aria-current={page.url.pathname === '/categories' ? 'page' : undefined}>
+          <a href="/categories">
+            <span class="nav-icon">📚</span>
+            <span>Categorías</span>
           </a>
         </li>
       </ul>

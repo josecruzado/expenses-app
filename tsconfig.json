@@ -9,6 +9,7 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
+		"allowImportingTsExtensions": true,
 		"moduleResolution": "bundler",
 		"lib": ["es2022", "dom", "dom.iterable"],
 		"target": "es2022",

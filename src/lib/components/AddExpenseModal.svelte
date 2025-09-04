@@ -2,43 +2,52 @@
     import { formatCurrency } from '$lib/services/gastosService';
     import { createEventDispatcher, onMount } from 'svelte';
     import { fly } from 'svelte/transition';
+    import { categorias, categoriaService, type Categoria } from "$lib/services/categoriaService";
+    import { Timestamp } from 'firebase/firestore';
 
     const dispatch = createEventDispatcher();
 
     let description = '';
     let amount: number | null = null;
-    let category = 'otros';
+    let category = 'Otros';
     let icon = '📦';
     let formError: string | null = null;
     let isSaving = false;
     let showSuccess = false;
     let isLoadingCategory = false;
+    let showCategoryDropdown = false;
 
     // Configuración de API
     const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
-
-    const categories = [
-        { id: 'Comida', name: 'Comida', icon: '🍽️' },
-        { id: 'Transporte', name: 'Transporte', icon: '🚗' },
-        { id: 'Salud', name: 'Salud', icon: '🏥' },
-        { id: 'Entretenimiento', name: 'Entretenimiento', icon: '🎬' },
-        { id: 'Hogar', name: 'Hogar', icon: '🏠' },
-        { id: 'Otros', name: 'Otros', icon: '📦' }
-    ];
 
     let dialogElement: HTMLDialogElement | null = null;
     let descriptionInput: HTMLInputElement;
 
     function getLocalDateTimeValue(d = new Date()) {
         const tz = d.getTimezoneOffset() * 60000;
-        return new Date(d.getTime() - tz).toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm
+        return new Date(d.getTime() - tz).toISOString().slice(0, 16);
     }
     let fecha: string = getLocalDateTimeValue();
+
+    // Variable reactiva para debug y validación
+    $: {
+        const categoriasCount = $categorias?.length || 0;
+        console.log('🔍 DEBUG - Categorías disponibles:', categoriasCount);
+        console.log('📋 Categorías completas:', $categorias);
+        console.log('✅ Categoría actual:', category, icon);
+        
+        // Si no hay categorías pero el store existe, forzar recarga
+        if (categoriasCount === 0 && $categorias !== undefined) {
+            console.warn('⚠️ Store de categorías vacío, posible problema de contexto');
+        }
+    }
+
+    // Validar que el store esté disponible
+    $: isStoreReady = $categorias !== undefined && $categorias !== null;
 
     onMount(() => {
         dialogElement?.showModal();
         
-        // Enfocar el input después de un pequeño delay para asegurar que el modal esté visible
         const timer = setTimeout(() => {
             if (descriptionInput) {
                 descriptionInput.focus();
@@ -51,6 +60,7 @@
     });
 
     function handleClose(e?: Event) {
+        showCategoryDropdown = false;
         const dlg = (e?.currentTarget as HTMLDialogElement) ?? dialogElement;
         if (dlg?.open) {
             dlg.close();
@@ -61,11 +71,17 @@
     // AI Category suggestion - funcionalidad principal
     async function suggestCategory() {
         if (!description.trim() || !GROQ_API_KEY) return;
-        
+
         isLoadingCategory = true;
         formError = null;
 
         try {
+            // Acceder reactivamente al store de categorías
+            const userCategories = $categorias || [];
+            const categoriesList = userCategories.map(c => `${c.name} (${c.icon})`).join(", ");
+
+            console.log("User categories for AI:", categoriesList);
+
             const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -75,11 +91,22 @@
                 body: JSON.stringify({
                     model: "meta-llama/llama-4-scout-17b-16e-instruct",
                     messages: [
-                        {
+                    {
                             role: "system",
-                            content: `Eres un asistente que clasifica gastos personales. Responde estrictamente en JSON con la forma {"categoria": string, "icono": string}. 
-                            Las categorías disponibles son: Comida, Transporte, Salud, Entretenimiento, Hogar, Otros.
-                            Elige un emoji adecuado como icono. Sin texto extra.`,
+                            content: `Eres un asistente experto en clasificar gastos personales.
+                            Las categorías disponibles del usuario son: ${categoriesList}.
+
+                            Instrucciones:
+                            1. Analiza el gasto y verifica si corresponde EXACTAMENTE o guarda relación directa con alguna categoría de la lista del usuario.
+                            - Si coincide o tiene relación clara, usa esa categoría y su icono.
+                            2. Si no coincide con ninguna, crea UNA nueva categoría simple y clara, con un icono (emoji) que la represente.
+                            3. El campo "icono" debe ser siempre un EMOJI estándar (ejemplo: 🍽️, 🚗, 🏥, 🎬, 🏠, 📦).
+                            - No uses texto, palabras, símbolos ASCII ni imágenes.
+                            4. Nunca combines dos categorías en una. Ejemplo prohibido: "Parlante Electrodomésticos".
+                            5. No inventes frases largas ni explicaciones. La salida debe ser estrictamente un JSON válido.
+
+                            Formato de salida obligatorio:
+                            {"categoria": "<nombre_categoria>", "icono": "<emoji>"}`,
                         },
                         {
                             role: "user",
@@ -98,16 +125,23 @@
                 const jsonStr = extractJSON(content);
                 if (jsonStr) {
                     const parsed = JSON.parse(jsonStr);
-                    const suggestedCategory = parsed.categoria || "otros";
-                    const suggestedIcon = parsed.icono || "❓";
-                    
-                    const foundCategory = categories.find(cat => cat.id === suggestedCategory);
+                    const suggestedCategory = parsed.categoria;
+                    const suggestedIcon = parsed.icono;
+
+                    // Verificar si la categoría existe en las del usuario
+                    const foundCategory = userCategories.find(cat => 
+                        cat.name.toLowerCase() === suggestedCategory.toLowerCase()
+                    );
+
                     if (foundCategory) {
-                        category = suggestedCategory;
-                        icon = suggestedIcon;
+                        category = foundCategory.name;
+                        icon = foundCategory.icon;
+                        console.log('Categoría encontrada:', foundCategory);
                     } else {
-                        category = "otros";
+                        // Sugerencia alternativa (no está en la lista del usuario)
+                        category = suggestedCategory || "Otros";
                         icon = suggestedIcon || "❓";
+                        console.log('Nueva categoría sugerida:', category, icon);
                     }
                 }
             }
@@ -133,6 +167,7 @@
 
         formError = null;
         isSaving = true;
+        showCategoryDropdown = false;
 
         await new Promise(resolve => setTimeout(resolve, 800));
 
@@ -141,7 +176,7 @@
         setTimeout(() => {
             dispatch('save', {
                 monto: amount,
-                categoria: icon+category,
+                categoria: icon + category,
                 fecha: new Date(fecha),
                 nota: description
             });
@@ -191,11 +226,59 @@
     }
 
     function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Escape') handleClose();
+        if (e.key === 'Escape') {
+            if (showCategoryDropdown) {
+                showCategoryDropdown = false;
+            } else {
+                handleClose();
+            }
+        }
         if (e.key === 'Enter' && e.metaKey) handleSubmit();
     }
 
-    $: selectedCategory = categories.find(cat => cat.id === category);
+    async function addNewCategory(nombre: string, iconEmoji: string) {
+        try {
+            const docRef = await categoriaService.addCategoria(nombre, iconEmoji, true);
+
+            const nuevaCategoria: Categoria = {
+                id: docRef.id, // usar el ID real de Firestore
+                name: nombre,
+                icon: iconEmoji,
+                isFavorite: true,
+                createdAt: Timestamp.fromDate(new Date())
+            };
+
+            categorias.update(cats => [...cats, nuevaCategoria]);
+
+            category = nuevaCategoria.name;
+            icon = nuevaCategoria.icon;
+        } catch (e) {
+            console.error('Error al agregar categoría:', e);
+            formError = 'No se pudo agregar la categoría';
+        }
+    }
+
+    function selectCategory(cat: Categoria) {
+        category = cat.name;
+        icon = cat.icon;
+        showCategoryDropdown = false;
+        console.log('Categoría seleccionada:', cat);
+    }
+
+    // Click outside para cerrar dropdown
+    function handleClickOutside(event: MouseEvent) {
+        const target = event.target as Element;
+        if (!target.closest('.category-select-wrapper')) {
+            showCategoryDropdown = false;
+        }
+    }
+
+    onMount(() => {
+        document.addEventListener('click', handleClickOutside);
+        return () => {
+            document.removeEventListener('click', handleClickOutside);
+        };
+    });
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -211,14 +294,14 @@
     {:else}
         <div class="modal-content">
             <header class="modal-header">
-                <h2>💰 Nuevo Gasto</h2>
+                <h2>💰 Registrar Gasto</h2>
                 <button type="button" class="close-btn" on:click={handleClose}>✕</button>
             </header>
 
             <form on:submit|preventDefault={handleSubmit} class="form">
                 <!-- Descripción con IA -->
                 <div class="field">
-                    <label for="description">¿Qué compraste?</label>
+                    <label for="description">Descripción</label>
                     <div class="input-wrapper">
                         <input
                             type="text"
@@ -238,13 +321,14 @@
                     </div>
                 </div>
 
-                <!-- Monto simplificado -->
+                <!-- Monto -->
                 <div class="field">
-                    <label for="amount">¿Cuánto gastaste?</label>
+                    <label for="amount">Monto</label>
                     <div class="amount-input">
                         <span class="currency">S/</span>
                         <input
                             type="number"
+                            inputmode="decimal"
                             id="amount"
                             bind:value={amount}
                             placeholder="0.00"
@@ -256,10 +340,11 @@
                     </div>
                 </div>
 
-                <!-- Monto simplificado -->
+                <!-- Fecha -->
                 <div class="field">
+                    <label for="fecha">Fecha y hora</label>
                     <div class="date-input">
-                        <span class="date-prefix"></span>
+                        <span class="date-prefix">📅</span>
                         <input
                             type="datetime-local"
                             id="fecha"
@@ -274,11 +359,78 @@
                     <div class="ai-suggestion">
                         <div class="suggestion-header">
                             <span class="ai-badge">🤖 IA</span>
-                            <span>Categoría sugerida</span>
+                            <span>
+                                {#if $categorias?.find(c => c.name === category)}
+                                    Categoría sugerida
+                                {:else}
+                                    Nueva categoría sugerida
+                                {/if}
+                            </span>
                         </div>
+
                         <div class="suggested-category">
                             <span class="category-icon">{icon}</span>
-                            <span class="category-name">{selectedCategory?.name || category}</span>
+                            <span class="category-name">{category}</span>
+                        </div>
+
+                        {#if !$categorias?.find(c => c.name === category)}
+                            <button type="button" class="btn-add-category" on:click={() => addNewCategory(category, icon)}>
+                                ➕ Agregar categoría
+                            </button>
+                        {/if}
+                    </div>
+
+                    <!-- Combobox de categorías -->
+                    <div class="field">
+                        <label for="category-select">O elige otra categoría</label>
+                        <div class="category-select-wrapper">
+                            <button 
+                                type="button" 
+                                class="category-select-trigger"
+                                on:click={() => showCategoryDropdown = !showCategoryDropdown}
+                                aria-expanded={showCategoryDropdown}
+                            >
+                                <div class="selected-category">
+                                    <span class="selected-icon">{icon}</span>
+                                    <span class="selected-name">{category}</span>
+                                </div>
+                                <span class="dropdown-arrow {showCategoryDropdown ? 'open' : ''}">▼</span>
+                            </button>
+                            
+                            {#if showCategoryDropdown && isStoreReady && $categorias.length > 0}
+                                <div class="category-dropdown" transition:fly={{ y: -10, duration: 200 }}>
+                                    {#each $categorias as cat (cat.id)}
+                                        <button 
+                                            type="button" 
+                                            class="category-dropdown-item {category === cat.name ? 'selected' : ''}"
+                                            on:click={() => selectCategory(cat)}
+                                        >
+                                            <span class="dropdown-icon">{cat.icon}</span>
+                                            <span class="dropdown-name">{cat.name}</span>
+                                            {#if category === cat.name}
+                                                <span class="check-mark">✓</span>
+                                            {/if}
+                                        </button>
+                                    {/each}
+                                </div>
+                            {/if}
+
+                            <!-- Debug/Loading state -->
+                            {#if showCategoryDropdown && (!isStoreReady || !$categorias || $categorias.length === 0)}
+                                <div class="category-dropdown debug-dropdown">
+                                    <div class="debug-message">
+                                        {#if !isStoreReady}
+                                            <span>⏳ Cargando categorías...</span>
+                                        {:else}
+                                            <span>📭 No hay categorías disponibles</span>
+                                            <small>Categorías en store: {$categorias?.length || 0}</small>
+                                            <button type="button" class="reload-categories" on:click={() => window.location.reload()}>
+                                                🔄 Recargar
+                                            </button>
+                                        {/if}
+                                    </div>
+                                </div>
+                            {/if}
                         </div>
                     </div>
                 {/if}
@@ -504,6 +656,7 @@
         display: flex;
         align-items: center;
         gap: 1rem;
+        margin-bottom: 1rem;
     }
 
     .category-icon {
@@ -515,6 +668,198 @@
         font-size: 1.1rem;
         font-weight: 700;
         color: #1a1a1a;
+    }
+
+    .btn-add-category {
+        background: rgba(0,122,255,0.1);
+        border: 1px solid #007aff;
+        color: #007aff;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-add-category:hover {
+        background: rgba(0,122,255,0.2);
+        transform: translateY(-1px);
+    }
+
+    /* Combobox Styles */
+    .category-select-wrapper {
+        position: relative;
+    }
+
+    .category-select-trigger {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        border: 2px solid #e5e5e5;
+        border-radius: 16px;
+        background: white;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+        font-size: 1rem;
+        text-align: left;
+    }
+
+    .category-select-trigger:hover {
+        border-color: #007aff;
+        box-shadow: 0 0 0 3px rgba(0,122,255,0.05);
+    }
+
+    .category-select-trigger:focus {
+        outline: none;
+        border-color: #007aff;
+        box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+    }
+
+    .selected-category {
+        display: flex;
+        align-items: center;
+        gap: 0.875rem;
+        flex: 1;
+    }
+
+    .selected-icon {
+        font-size: 1.25rem;
+        line-height: 1;
+    }
+
+    .selected-name {
+        font-weight: 600;
+        color: #1a1a1a;
+    }
+
+    .dropdown-arrow {
+        font-size: 0.875rem;
+        color: #666;
+        transition: transform 0.2s ease;
+        margin-left: 0.5rem;
+    }
+
+    .dropdown-arrow.open {
+        transform: rotate(180deg);
+    }
+
+    .category-dropdown {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e5e5e5;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        z-index: 1000;
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 0.5rem;
+    }
+
+    .category-dropdown-item {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 0.875rem;
+        padding: 0.875rem 1rem;
+        border: none;
+        border-radius: 12px;
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        font-family: inherit;
+        font-size: 0.95rem;
+        position: relative;
+        text-align: left;
+    }
+
+    .category-dropdown-item:hover {
+        background: #f0f4ff;
+        transform: translateX(2px);
+    }
+
+    .category-dropdown-item.selected {
+        background: linear-gradient(135deg, #e6f3ff, #cce7ff);
+        color: #007aff;
+        font-weight: 600;
+    }
+
+    .dropdown-icon {
+        font-size: 1.1rem;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    .dropdown-name {
+        flex: 1;
+        font-weight: 600;
+    }
+
+    .check-mark {
+        color: #007aff;
+        font-weight: 700;
+        font-size: 0.9rem;
+        margin-left: auto;
+    }
+
+    /* Debug styles */
+    .debug-dropdown {
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .debug-message {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .debug-message small {
+        font-size: 0.8rem;
+        color: #999;
+    }
+
+    .reload-categories {
+        background: #007aff;
+        border: none;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .reload-categories:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+    }
+
+    /* Scrollbar del dropdown */
+    .category-dropdown::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .category-dropdown::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .category-dropdown::-webkit-scrollbar-thumb {
+        background: #ddd;
+        border-radius: 3px;
+    }
+
+    .category-dropdown::-webkit-scrollbar-thumb:hover {
+        background: #bbb;
     }
 
     .error {
@@ -697,8 +1042,25 @@
         .date-input {
             padding: 0.75rem 1rem;
         }
+        
         .date-input input[type="datetime-local"] {
             font-size: 1rem;
+        }
+
+        .category-dropdown {
+            max-height: 200px;
+        }
+
+        .category-dropdown-item {
+            padding: 0.75rem;
+        }
+
+        .dropdown-icon {
+            font-size: 1rem;
+        }
+
+        .dropdown-name {
+            font-size: 0.9rem;
         }
     }
 
@@ -766,12 +1128,83 @@
             background: #2a2a2a;
             border-color: #444;
         }
+        
         .date-input:focus-within {
             border-color: #007aff;
             box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
         }
+        
         .date-input input[type="datetime-local"] {
             color: #fff;
+        }
+        
+        .category-name {
+            color: #fff;
+        }
+        
+        .field label {
+            color: #fff;
+        }
+
+        .btn-add-category {
+            background: rgba(0,122,255,0.2);
+            border-color: #007aff;
+            color: #66b3ff;
+        }
+
+        .btn-add-category:hover {
+            background: rgba(0,122,255,0.3);
+        }
+
+        /* Dark mode combobox */
+        .category-select-trigger {
+            background: #2a2a2a;
+            border-color: #444;
+            color: white;
+        }
+
+        .category-select-trigger:hover {
+            border-color: #007aff;
+            box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
+        }
+
+        .selected-name {
+            color: white;
+        }
+
+        .dropdown-arrow {
+            color: #ccc;
+        }
+
+        .category-dropdown {
+            background: #2a2a2a;
+            border-color: #444;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+
+        .category-dropdown-item {
+            color: white;
+        }
+
+        .category-dropdown-item:hover {
+            background: #1a2332;
+        }
+
+        .category-dropdown-item.selected {
+            background: linear-gradient(135deg, #1a2d42, #1a3a52);
+            color: #66b3ff;
+        }
+
+        .category-dropdown::-webkit-scrollbar-thumb {
+            background: #555;
+        }
+
+        .debug-message {
+            color: #ccc;
+        }
+
+        .debug-message small {
+            color: #888;
         }
     }
 </style>
