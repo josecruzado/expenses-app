@@ -2,86 +2,74 @@
     import { formatCurrency } from '$lib/services/gastosService';
     import { createEventDispatcher, onMount } from 'svelte';
     import { fly } from 'svelte/transition';
-    import { categorias, categoriaService, type Categoria } from "$lib/services/categoriaService";
-    import { Timestamp } from 'firebase/firestore';
+    import { categorias, categoriaService, loadingCategorias } from "$lib/services/categoriaService";
+    import type { Categoria } from '$lib/types'; // CAMBIO: Importar Categoria desde los tipos centrales
 
     const dispatch = createEventDispatcher();
 
+    // --- Estado del formulario ---
     let description = '';
     let amount: number | null = null;
-    let category = 'Otros';
-    let icon = '📦';
+    let fecha: string = getLocalDateTimeValue();
+
+    // CAMBIO: Variables para manejar la categoría seleccionada
+    let selectedCategoryName = 'Otros';
+    let selectedCategoryIcon = '📦';
+    let selectedCategoryId: string | null = null; // ¡Esta es la variable clave!
+
+    // --- Estado de la UI ---
     let formError: string | null = null;
     let isSaving = false;
     let showSuccess = false;
     let isLoadingCategory = false;
     let showCategoryDropdown = false;
+    let aiHasSuggested = false; // <-- AÑADE ESTA LÍNEA
+
 
     // Configuración de API
     const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY as string;
 
     let dialogElement: HTMLDialogElement | null = null;
-    let descriptionInput: HTMLInputElement;
+    let amountInput: HTMLInputElement;
 
     function getLocalDateTimeValue(d = new Date()) {
         const tz = d.getTimezoneOffset() * 60000;
         return new Date(d.getTime() - tz).toISOString().slice(0, 16);
     }
-    let fecha: string = getLocalDateTimeValue();
 
-    // Variable reactiva para debug y validación
-    $: {
-        const categoriasCount = $categorias?.length || 0;
-        console.log('🔍 DEBUG - Categorías disponibles:', categoriasCount);
-        console.log('📋 Categorías completas:', $categorias);
-        console.log('✅ Categoría actual:', category, icon);
-        
-        // Si no hay categorías pero el store existe, forzar recarga
-        if (categoriasCount === 0 && $categorias !== undefined) {
-            console.warn('⚠️ Store de categorías vacío, posible problema de contexto');
+    // CAMBIO: Cuando el store de categorías se actualiza, intenta encontrar el ID de la categoría actual.
+    $: if ($categorias && selectedCategoryName && !selectedCategoryId) {
+        const found = $categorias.find(c => c.name === selectedCategoryName);
+        if (found) {
+            selectedCategoryId = found.id;
         }
     }
 
-    // Validar que el store esté disponible
-    $: isStoreReady = $categorias !== undefined && $categorias !== null;
-
     onMount(() => {
         dialogElement?.showModal();
-        
-        const timer = setTimeout(() => {
-            if (descriptionInput) {
-                descriptionInput.focus();
-            }
-        }, 200);
-
-        return () => {
-            clearTimeout(timer);
-        };
+        const timer = setTimeout(() => amountInput?.focus(), 200);
+        return () => clearTimeout(timer);
     });
 
     function handleClose(e?: Event) {
         showCategoryDropdown = false;
         const dlg = (e?.currentTarget as HTMLDialogElement) ?? dialogElement;
-        if (dlg?.open) {
-            dlg.close();
-        }
+        if (dlg?.open) dlg.close();
         dispatch('close');
     }
 
     // AI Category suggestion - funcionalidad principal
     async function suggestCategory() {
         if (!description.trim() || !GROQ_API_KEY) return;
-
         isLoadingCategory = true;
         formError = null;
 
         try {
-            // Acceder reactivamente al store de categorías
             const userCategories = $categorias || [];
             const categoriesList = userCategories.map(c => `${c.name} (${c.icon})`).join(", ");
 
             console.log("User categories for AI:", categoriesList);
-
+            
             const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                 method: "POST",
                 headers: {
@@ -118,30 +106,28 @@
             });
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content;
 
             if (content) {
                 const jsonStr = extractJSON(content);
                 if (jsonStr) {
+                    aiHasSuggested = true;
                     const parsed = JSON.parse(jsonStr);
-                    const suggestedCategory = parsed.categoria;
+                    const suggestedCategoryName = parsed.categoria;
                     const suggestedIcon = parsed.icono;
 
-                    // Verificar si la categoría existe en las del usuario
-                    const foundCategory = userCategories.find(cat => 
-                        cat.name.toLowerCase() === suggestedCategory.toLowerCase()
-                    );
+                    const foundCategory = userCategories.find(cat => cat.name.toLowerCase() === suggestedCategoryName.toLowerCase());
 
                     if (foundCategory) {
-                        category = foundCategory.name;
-                        icon = foundCategory.icon;
-                        console.log('Categoría encontrada:', foundCategory);
+                        // CAMBIO: Si la categoría existe, la seleccionamos completamente
+                        selectCategory(foundCategory);
                     } else {
-                        // Sugerencia alternativa (no está en la lista del usuario)
-                        category = suggestedCategory || "Otros";
-                        icon = suggestedIcon || "❓";
-                        console.log('Nueva categoría sugerida:', category, icon);
+                        // CAMBIO: Si es nueva, reseteamos el ID
+                        selectedCategoryName = suggestedCategoryName || "Otros";
+                        selectedCategoryIcon = suggestedIcon || "❓";
+                        selectedCategoryId = null; // No tiene ID aún
                     }
                 }
             }
@@ -170,13 +156,13 @@
         showCategoryDropdown = false;
 
         await new Promise(resolve => setTimeout(resolve, 800));
-
         showSuccess = true;
         
         setTimeout(() => {
+            // CAMBIO: Despachar el evento con el formato de `CreateGastoData`
             dispatch('save', {
                 monto: amount,
-                categoria: icon + category,
+                categoriaId: selectedCategoryId, // Usamos el ID guardado
                 fecha: new Date(fecha),
                 nota: description
             });
@@ -238,31 +224,30 @@
 
     async function addNewCategory(nombre: string, iconEmoji: string) {
         try {
-            const docRef = await categoriaService.addCategoria(nombre, iconEmoji, true);
-
-            const nuevaCategoria: Categoria = {
-                id: docRef.id, // usar el ID real de Firestore
+            // CAMBIO: Usar la nueva firma del servicio que espera un objeto
+            const newId = await categoriaService.addCategoria({
                 name: nombre,
                 icon: iconEmoji,
-                isFavorite: true,
-                createdAt: Timestamp.fromDate(new Date())
-            };
+                isFavorite: true
+            });
 
-            categorias.update(cats => [...cats, nuevaCategoria]);
-
-            category = nuevaCategoria.name;
-            icon = nuevaCategoria.icon;
+            // CAMBIO: Seleccionar la nueva categoría inmediatamente
+            selectedCategoryName = nombre;
+            selectedCategoryIcon = iconEmoji;
+            selectedCategoryId = newId; // ¡Importante! Asignar el nuevo ID
+            
         } catch (e) {
             console.error('Error al agregar categoría:', e);
             formError = 'No se pudo agregar la categoría';
         }
     }
 
+    // CAMBIO: Función centralizada para seleccionar una categoría
     function selectCategory(cat: Categoria) {
-        category = cat.name;
-        icon = cat.icon;
+        selectedCategoryName = cat.name;
+        selectedCategoryIcon = cat.icon;
+        selectedCategoryId = cat.id; // La parte más importante
         showCategoryDropdown = false;
-        console.log('Categoría seleccionada:', cat);
     }
 
     // Click outside para cerrar dropdown
@@ -299,28 +284,7 @@
             </header>
 
             <form on:submit|preventDefault={handleSubmit} class="form">
-                <!-- Descripción con IA -->
-                <div class="field">
-                    <label for="description">Descripción</label>
-                    <div class="input-wrapper">
-                        <input
-                            type="text"
-                            id="description"
-                            bind:value={description}
-                            bind:this={descriptionInput}
-                            on:input={handleDescriptionChange}
-                            placeholder="Ej. Almuerzo, gasolina, medicinas..."
-                            required
-                        />
-                        {#if isLoadingCategory}
-                            <div class="ai-indicator">
-                                <div class="spinner"></div>
-                                <span>IA analizando...</span>
-                            </div>
-                        {/if}
-                    </div>
-                </div>
-
+                
                 <!-- Monto -->
                 <div class="field">
                     <label for="amount">Monto</label>
@@ -331,12 +295,34 @@
                             inputmode="decimal"
                             id="amount"
                             bind:value={amount}
+                            bind:this={amountInput}
                             placeholder="0.00"
                             step="0.01"
                             min="0.01"
                             max="999999"
                             required
                         />
+                    </div>
+                </div>
+                
+                <!-- Descripción con IA -->
+                <div class="field">
+                    <label for="description">Descripción</label>
+                    <div class="input-wrapper">
+                        <input
+                            type="text"
+                            id="description"
+                            bind:value={description}
+                            on:input={handleDescriptionChange}
+                            placeholder="Ej. Almuerzo, gasolina, medicinas..."
+                            required
+                        />
+                        {#if isLoadingCategory}
+                            <div class="ai-indicator">
+                                <div class="spinner"></div>
+                                <span>IA analizando...</span>
+                            </div>
+                        {/if}
                     </div>
                 </div>
 
@@ -355,12 +341,12 @@
                 </div>
 
                 <!-- Categoría sugerida por IA -->
-                {#if category && icon}
+                {#if aiHasSuggested}
                     <div class="ai-suggestion">
                         <div class="suggestion-header">
                             <span class="ai-badge">🤖 IA</span>
                             <span>
-                                {#if $categorias?.find(c => c.name === category)}
+                                {#if selectedCategoryId}
                                     Categoría sugerida
                                 {:else}
                                     Nueva categoría sugerida
@@ -369,13 +355,13 @@
                         </div>
 
                         <div class="suggested-category">
-                            <span class="category-icon">{icon}</span>
-                            <span class="category-name">{category}</span>
+                            <span class="category-icon">{selectedCategoryIcon}</span>
+                            <span class="category-name">{selectedCategoryName}</span>
                         </div>
 
-                        {#if !$categorias?.find(c => c.name === category)}
-                            <button type="button" class="btn-add-category" on:click={() => addNewCategory(category, icon)}>
-                                ➕ Agregar categoría
+                        {#if !selectedCategoryId}
+                            <button type="button" class="btn-add-category" on:click={() => addNewCategory(selectedCategoryName, selectedCategoryIcon)}>
+                                ➕ Agregar y seleccionar
                             </button>
                         {/if}
                     </div>
@@ -391,44 +377,42 @@
                                 aria-expanded={showCategoryDropdown}
                             >
                                 <div class="selected-category">
-                                    <span class="selected-icon">{icon}</span>
-                                    <span class="selected-name">{category}</span>
+                                    <span class="selected-icon">{selectedCategoryIcon}</span>
+                                    <span class="selected-name">{selectedCategoryName}</span>
                                 </div>
                                 <span class="dropdown-arrow {showCategoryDropdown ? 'open' : ''}">▼</span>
                             </button>
                             
-                            {#if showCategoryDropdown && isStoreReady && $categorias.length > 0}
+                            <!-- CAMBIO: Lógica corregida para mostrar el dropdown -->
+                            {#if showCategoryDropdown}
                                 <div class="category-dropdown" transition:fly={{ y: -10, duration: 200 }}>
-                                    {#each $categorias as cat (cat.id)}
-                                        <button 
-                                            type="button" 
-                                            class="category-dropdown-item {category === cat.name ? 'selected' : ''}"
-                                            on:click={() => selectCategory(cat)}
-                                        >
-                                            <span class="dropdown-icon">{cat.icon}</span>
-                                            <span class="dropdown-name">{cat.name}</span>
-                                            {#if category === cat.name}
-                                                <span class="check-mark">✓</span>
-                                            {/if}
-                                        </button>
-                                    {/each}
-                                </div>
-                            {/if}
-
-                            <!-- Debug/Loading state -->
-                            {#if showCategoryDropdown && (!isStoreReady || !$categorias || $categorias.length === 0)}
-                                <div class="category-dropdown debug-dropdown">
-                                    <div class="debug-message">
-                                        {#if !isStoreReady}
+                                    {#if $loadingCategorias}
+                                        <!-- 1. Estado de Carga -->
+                                        <div class="debug-message">
                                             <span>⏳ Cargando categorías...</span>
-                                        {:else}
-                                            <span>📭 No hay categorías disponibles</span>
-                                            <small>Categorías en store: {$categorias?.length || 0}</small>
-                                            <button type="button" class="reload-categories" on:click={() => window.location.reload()}>
-                                                🔄 Recargar
+                                        </div>
+                                    {:else if $categorias.length > 0}
+                                        <!-- 2. Estado con Datos -->
+                                        {#each $categorias as cat (cat.id)}
+                                            <button 
+                                                type="button" 
+                                                class="category-dropdown-item {selectedCategoryId === cat.id ? 'selected' : ''}"
+                                                on:click={() => selectCategory(cat)}
+                                            >
+                                                <span class="dropdown-icon">{cat.icon}</span>
+                                                <span class="dropdown-name">{cat.name}</span>
+                                                {#if selectedCategoryId === cat.id}
+                                                    <span class="check-mark">✓</span>
+                                                {/if}
                                             </button>
-                                        {/if}
-                                    </div>
+                                        {/each}
+                                    {:else}
+                                        <!-- 3. Estado Vacío -->
+                                        <div class="debug-message">
+                                            <span>📭 No hay categorías disponibles</span>
+                                            <small>Puedes agregar una nueva desde la sección de categorías.</small>
+                                        </div>
+                                    {/if}
                                 </div>
                             {/if}
                         </div>

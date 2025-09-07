@@ -1,24 +1,21 @@
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
-    import { formatCurrency, formatDate, getCategoryIcon, getCategoryName} from '$lib/services/gastosService';
+    // CAMBIO: Importar solo las funciones necesarias y el tipo correcto.
+    import { formatCurrency, formatGastoDate } from '$lib/services/gastosService';
+    import type { GastoWithCategory } from '$lib/types';
 
     // Props
-    export let gasto: {
-        id: string;
-        categoria: string;
-        fecha: string;
-        monto: number;
-        nota: string;
-    };
+    // CAMBIO: Usar el tipo GastoWithCategory.
+    export let gasto: GastoWithCategory;
     export let isDeleting: boolean = false;
-    export let showDeleteButton: boolean = true; // Nueva prop para controlar si se muestra el botón
+    export let showDeleteButton: boolean = true;
 
     const dispatch = createEventDispatcher();
 
     function handleDelete() {
         const confirmed = confirm(
             `⚠️ ¿Eliminar este gasto?\n\n` +
-            `Categoría: ${getCategoryName(gasto.categoria)}\n` +
+            `Categoría: ${gasto.categoria.name}\n` +
             `Monto: ${formatCurrency(gasto.monto)}\n` +
             (gasto.nota ? `Nota: ${gasto.nota}\n` : "") +
             `\nEsta acción no se puede deshacer.`
@@ -34,10 +31,10 @@
     <div
         class="expense-item"
     >
-        <div class="expense-icon">{getCategoryIcon(gasto.categoria)}</div>
+        <div class="expense-icon">{gasto.categoria.icon}</div>
         <div class="expense-details">
-            <h3 class="expense-title">{getCategoryName(gasto.categoria)}</h3>
-            <p class="expense-date">{formatDate(gasto.fecha)}</p>
+            <h3 class="expense-title">{gasto.categoria.name}</h3>
+            <p class="expense-date">{formatGastoDate(gasto.fecha)}</p>
             {#if gasto.nota}
                 <p class="expense-note">{gasto.nota}</p>
             {/if}

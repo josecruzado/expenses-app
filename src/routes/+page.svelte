@@ -1,14 +1,15 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import Counter from './Counter.svelte';
-	import { gastos, loading, error, type Gasto } from '$lib/firebase.js';
-    import { formatCurrency, formatDate, gastosService, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
     import AddExpenseModal from '$lib/components/AddExpenseModal.svelte';
     import TransactionItem from '$lib/components/TransactionItem.svelte';
+    import { gastos, loadingGastos as loading, errorGastos as error, gastosService, formatCurrency } from '$lib/services/gastosService';
+    import type { CreateGastoData, Gasto, GastoWithCategory } from '$lib/types';
+    import { categoriaService } from '$lib/services/categoriaService';
 
 	let currentMonthTotal = 0;
 	let transactionCount = 0;
-	let recentTransactions: any[] = [];
+	// CAMBIO: Tipar correctamente el array de transacciones.
+    let recentTransactions: GastoWithCategory[] = [];
 	let monthlySpendingTrend: Array<{month: string, amount: number}> = [];
 	let categoryBreakdown: Array<{name: string, amount: number, percentage: number}> = [];
 	let weeklyAverage = 0;
@@ -23,84 +24,19 @@
 	let showAddExpenseModal = false;
     let addExpenseModalComponent: AddExpenseModal;
 
-    async function handleSaveExpense(event: CustomEvent<Gasto>) {
-        const newGasto = event.detail;
-        const result = await gastosService.addGasto(newGasto);
-
-        if (result.success) {
+    // CAMBIO: La función handleSaveExpense ahora usa CreateGastoData y maneja la promesa correctamente.
+    async function handleSaveExpense(event: CustomEvent<CreateGastoData>) {
+        const newGastoData = event.detail;
+        try {
+            await gastosService.addGasto(newGastoData);
             showAddExpenseModal = false;
-        } else {
-            addExpenseModalComponent.showSaveError(result.error || 'An unknown error occurred.');
+        } catch (err) {
+            console.error("Error al guardar el gasto:", err);
+            // Asumo que tu componente modal tiene un método para mostrar errores.
+            // Si no, puedes usar un store o una variable local para mostrar el error.
+            // addExpenseModalComponent.showSaveError('Ocurrió un error al guardar.');
         }
     }
-	
-	function parseSpanishDate(fecha: string): Date {
-		const monthMap: { [key: string]: number } = {
-			'ene': 0, 'enero': 0,
-			'feb': 1, 'febrero': 1,
-			'mar': 2, 'marzo': 2,
-			'abr': 3, 'abril': 3,
-			'may': 4, 'mayo': 4,
-			'jun': 5, 'junio': 5,
-			'jul': 6, 'julio': 6,
-			'ago': 7, 'agosto': 7,
-			'sep': 8, 'sept': 8, 'septiembre': 8, 'setiembre': 8,
-			'oct': 9, 'octubre': 9,
-			'nov': 10, 'noviembre': 10,
-			'dic': 11, 'diciembre': 11
-		};
-
-		const normalized = fecha.replace(/[\u00A0\u202F]/g, ' ').trim();
-
-		const fullPattern =
-			/^(\d{1,2})\s+de\s+([a-záéíóúñ]+)\s+de\s+(\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)\s+UTC([+\-−])(\d{1,2})(?::?(\d{2}))?$/i;
-
-		const shortPattern =
-			/(\d{1,2})\s+([a-záéíóúñ]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.?m\.?|p\.?m\.?)$/i;
-
-		let m = normalized.match(fullPattern);
-		if (m) {
-			const [, d, monthName, y, hh, mm, ss = '0', period, sign, tzH, tzM = '0'] = m;
-			const monthIndex = monthMap[monthName.toLowerCase()];
-			if (monthIndex === undefined) return new Date(0);
-
-			let h = parseInt(hh, 10);
-			const isPM = period.toLowerCase().startsWith('p');
-			if (isPM && h !== 12) h += 12;
-			if (!isPM && h === 12) h = 0;
-
-			const tzHours = parseInt(tzH, 10) || 0;
-			const tzMinutes = parseInt(tzM, 10) || 0;
-			const offsetMinutes = (sign === '-' || sign === '−' ? 1 : -1) * (tzHours * 60 + tzMinutes);
-
-			const utcMs = Date.UTC(
-				parseInt(y, 10),
-				monthIndex,
-				parseInt(d, 10),
-				h,
-				parseInt(mm, 10),
-				parseInt(ss, 10)
-			) + offsetMinutes * 60000;
-
-			return new Date(utcMs);
-		}
-
-		m = normalized.match(shortPattern);
-		if (m) {
-			const [, d, mon, y, hh, mm, period] = m;
-			const monthIndex = monthMap[mon.toLowerCase()];
-			if (monthIndex === undefined) return new Date(0);
-
-			let h = parseInt(hh, 10);
-			const isPM = period.toLowerCase().startsWith('p');
-			if (isPM && h !== 12) h += 12;
-			if (!isPM && h === 12) h = 0;
-
-			return new Date(parseInt(y, 10), monthIndex, parseInt(d, 10), h, parseInt(mm, 10));
-		}
-
-		return new Date(0);
-	}
 
 	// Función para obtener el nombre del día de la semana
 	function getDayOfWeek(date: Date): string {
@@ -110,32 +46,23 @@
 
 	// Calcular analytics avanzados
 	$: {
-		if ($gastos.length > 0) {
+		if ($gastos && $gastos.length > 0) {
 			const now = new Date();
 			const currentMonth = now.getMonth();
 			const currentYear = now.getFullYear();
 			const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
 			const previousMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
 			
-			// Gastos del mes actual
-			const monthlyExpenses = $gastos.filter(gasto => {
-				try {
-					const gastoDate = parseSpanishDate(gasto.fecha);
-					return gastoDate.getMonth() === currentMonth && gastoDate.getFullYear() === currentYear;
-				} catch {
-					return false;
-				}
-			});
+			// CAMBIO: Añadir una comprobación para asegurar que `gasto.fecha` es un objeto Date.
+            const monthlyExpenses = $gastos.filter(gasto => {
+                const gastoDate = gasto.fecha;
+                return gastoDate instanceof Date && gastoDate.getMonth() === currentMonth && gastoDate.getFullYear() === currentYear;
+            });
 
-			// Gastos del mes anterior
-			const previousMonthExpenses = $gastos.filter(gasto => {
-				try {
-					const gastoDate = parseSpanishDate(gasto.fecha);
-					return gastoDate.getMonth() === previousMonth && gastoDate.getFullYear() === previousMonthYear;
-				} catch {
-					return false;
-				}
-			});
+            const previousMonthExpenses = $gastos.filter(gasto => {
+                const gastoDate = gasto.fecha;
+                return gastoDate instanceof Date && gastoDate.getMonth() === previousMonth && gastoDate.getFullYear() === previousMonthYear;
+            });
 			
 			currentMonthTotal = monthlyExpenses.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0);
 			previousMonthTotal = previousMonthExpenses.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0);
@@ -162,12 +89,14 @@
 			spendingVelocityChange = dailyAveragePreviousMonth > 0 ? 
 				((dailyAverageThisMonth - dailyAveragePreviousMonth) / dailyAveragePreviousMonth) * 100 : 0;
 
-			// Análisis por categorías
-			const categoryTotals: {[key: string]: number} = monthlyExpenses.reduce((acc, gasto) => {
-				const category = gasto.categoria || 'Sin categoría';
-				acc[category] = (acc[category] || 0) + Math.abs(gasto.monto);
-				return acc;
-			}, {} as {[key: string]: number});
+			// CAMBIO: Acceder a gasto.categoria.name para el análisis.
+            const categoryTotals: { [key: string]: number } = monthlyExpenses.reduce((acc, gasto) => {
+                // Simplemente accede a la propiedad que ya existe. No necesitas 'await'.
+                const categoryName = gasto.categoria?.name || 'Sin categoría';
+                acc[categoryName] = (acc[categoryName] || 0) + Math.abs(gasto.monto);
+                return acc;
+            }, {} as { [key: string]: number });
+
 
 			categoryBreakdown = Object.entries(categoryTotals)
 				.map(([name, amount]) => ({ 
@@ -180,17 +109,14 @@
 
 			topCategory = categoryBreakdown[0]?.name || 'Sin datos';
 
-			// Gastos por día de la semana
-			const dayTotals: {[key: string]: number} = monthlyExpenses.reduce((acc, gasto) => {
-				try {
-					const gastoDate = parseSpanishDate(gasto.fecha);
-					const dayName = getDayOfWeek(gastoDate);
-					acc[dayName] = (acc[dayName] || 0) + Math.abs(gasto.monto);
-					return acc;
-				} catch {
-					return acc;
-				}
-			}, {} as {[key: string]: number});
+			// CAMBIO: Añadir validación de fecha y eliminar try/catch.
+            const dayTotals: {[key: string]: number} = monthlyExpenses.reduce((acc, gasto) => {
+                if (gasto.fecha instanceof Date) {
+                    const dayName = getDayOfWeek(gasto.fecha);
+                    acc[dayName] = (acc[dayName] || 0) + Math.abs(gasto.monto);
+                }
+                return acc;
+            }, {} as {[key: string]: number});
 
 			spendingByDayOfWeek = Object.entries(dayTotals)
 				.map(([day, amount]) => ({ day, amount }))
@@ -202,14 +128,10 @@
 				const targetMonth = (currentMonth - i + 12) % 12;
 				const targetYear = currentMonth - i < 0 ? currentYear - 1 : currentYear;
 				
-				const monthExpenses = $gastos.filter(gasto => {
-					try {
-						const gastoDate = parseSpanishDate(gasto.fecha);
-						return gastoDate.getMonth() === targetMonth && gastoDate.getFullYear() === targetYear;
-					} catch {
-						return false;
-					}
-				});
+				// CAMBIO: Añadir validación de fecha y eliminar try/catch.
+                const monthExpenses = $gastos.filter(gasto => {
+                    return gasto.fecha instanceof Date && gasto.fecha.getMonth() === targetMonth && gasto.fecha.getFullYear() === targetYear;
+                });
 				
 				const total = monthExpenses.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0);
 				const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -236,14 +158,6 @@
 			spendingVelocityChange = 0;
 		}
 	}
-
-	onMount(() => {
-		subscribeToGastos();
-	});
-
-	onDestroy(() => {
-		unsubscribeFromGastos();
-	});
 </script>
 
 <svelte:head>

@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { writable } from 'svelte/store';
+import type { Gasto } from './types';
 
 // Firebase configuration - usando variables de entorno
 const firebaseConfig = {
@@ -123,16 +124,6 @@ export function translateFirebaseError(error: unknown): string {
   }
 
   return 'Ocurrió un error. Intenta nuevamente';
-}
-
-// Types (manteniendo tu estructura existente)
-export interface Gasto {
-  id: string;
-  categoria: string;
-  fecha: string;
-  monto: number;
-  nota: string;
-  uid?: string; // Agregamos UID para filtrar por usuario
 }
 
 // Stores (manteniendo los existentes)

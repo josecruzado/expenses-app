@@ -1,17 +1,14 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { gastos, loading, error} from '$lib/firebase.js';
-    import { formatCurrency, formatDate, gastosService, getCategoryIcon, getCategoryName, subscribeToGastos, unsubscribeFromGastos } from '$lib/services/gastosService';
-    import TransactionItem from '$lib/components/TransactionItem.svelte';
-	
-	// Local type definition
-	interface Gasto {
-		id: string;
-		categoria: string;
-		fecha: string;
-		monto: number;
-		nota: string;
-	}
+	import TransactionItem from '$lib/components/TransactionItem.svelte';
+	import { 
+        gastos, 
+        gastosService, 
+        loadingGastos as loading, 
+        errorGastos as error, 
+        formatCurrency 
+    } from '$lib/services/gastosService';
+    import type { GastoWithCategory } from '$lib/types';
+    import type { Gasto } from '$lib/types';
 
 	let searchTerm = '';
 	let selectedCategory = '';
@@ -19,65 +16,46 @@
 	let deletingIds = new Set<string>(); // Track which items are being deleted
 	
 	// Get unique categories for filter
-	$: categories = [...new Set($gastos.map((gasto: Gasto) => getCategoryName(gasto.categoria)))].sort();
-	
-	// Helper function to parse Spanish date format for sorting
-	function parseSpanishDate(fecha: string): Date {
-		const monthMap: { [key: string]: number } = {
-			'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3,
-			'may': 4, 'jun': 5, 'jul': 6, 'ago': 7,
-			'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11
-		};
-		
-		const datePattern = /(\d{1,2})\s+([a-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.)/i;
-		const match = fecha.match(datePattern);
-		
-		if (match) {
-			const [, day, monthSpanish, year, hour, minute, period] = match;
-			const monthIndex = monthMap[monthSpanish.toLowerCase()];
-			
-			if (monthIndex !== undefined) {
-				const isPM = period.toLowerCase().includes('p');
-				let hour24 = parseInt(hour);
-				
-				if (isPM && hour24 !== 12) {
-					hour24 += 12;
-				} else if (!isPM && hour24 === 12) {
-					hour24 = 0;
-				}
-				
-				return new Date(parseInt(year), monthIndex, parseInt(day), hour24, parseInt(minute));
-			}
-		}
-		
-		return new Date(0); // Return epoch if parsing fails
-	}
+    $: categories = [...new Set($gastos.map((gasto) => gasto.categoria.name))].sort();
 	
 	// Filter and sort gastos
-	$: filteredGastos = $gastos
-		.filter((gasto: Gasto) => {
-			const matchesSearch = !searchTerm || 
-				getCategoryName(gasto.categoria).toLowerCase().includes(searchTerm.toLowerCase()) ||
-				gasto.nota.toLowerCase().includes(searchTerm.toLowerCase());
-			const matchesCategory = !selectedCategory || getCategoryName(gasto.categoria) === selectedCategory;
-			return matchesSearch && matchesCategory;
-		})
-		.sort((a: Gasto, b: Gasto) => {
-			switch (sortOrder) {
-				case 'date-asc':
-					return parseSpanishDate(a.fecha).getTime() - parseSpanishDate(b.fecha).getTime();
-				case 'amount-desc':
-					return Math.abs(b.monto) - Math.abs(a.monto);
-				case 'amount-asc':
-					return Math.abs(a.monto) - Math.abs(b.monto);
-				case 'date-desc':
-				default:
-					return parseSpanishDate(b.fecha).getTime() - parseSpanishDate(a.fecha).getTime();
-			}
-		});
+	// CAMBIO: Se usa el tipo GastoWithCategory y se accede a `gasto.categoria.name`.
+    $: filteredGastos = $gastos
+        .filter((gasto: GastoWithCategory) => {
+            const matchesSearch = !searchTerm || 
+                gasto.categoria.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                gasto.nota.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCategory = !selectedCategory || gasto.categoria.name === selectedCategory;
+            return matchesSearch && matchesCategory;
+        })
+        .sort((a: GastoWithCategory, b: GastoWithCategory) => {
+            // CAMBIO: Añadir comprobaciones de seguridad para la ordenación por fecha.
+            switch (sortOrder) {
+                case 'date-asc':
+                case 'date-desc': {
+                    const aIsDate = a.fecha instanceof Date;
+                    const bIsDate = b.fecha instanceof Date;
+
+                    // Si una fecha no es válida, se mueve al final de la lista.
+                    if (!aIsDate) return 1;
+                    if (!bIsDate) return -1;
+
+                    // Si ambas son válidas, se comparan.
+                    return sortOrder === 'date-asc'
+                        ? a.fecha.getTime() - b.fecha.getTime()
+                        : b.fecha.getTime() - a.fecha.getTime();
+                }
+                case 'amount-desc':
+                    return Math.abs(b.monto) - Math.abs(a.monto);
+                case 'amount-asc':
+                    return Math.abs(a.monto) - Math.abs(b.monto);
+                default:
+                    return 0;
+            }
+        });
 	
 	// Calculate total of filtered results
-	$: totalAmount = filteredGastos.reduce((sum: number, gasto: Gasto) => sum + Math.abs(gasto.monto), 0);
+    $: totalAmount = filteredGastos.reduce((sum: number, gasto: GastoWithCategory) => sum + Math.abs(gasto.monto), 0);
 
 	// Handle delete expense
 	async function handleDeleteGasto(id: string) {
@@ -105,14 +83,6 @@
 			deletingIds = new Set([...deletingIds].filter(deletingId => deletingId !== id));
 		}
 	}
-
-	onMount(() => {
-		subscribeToGastos();
-	});
-
-	onDestroy(() => {
-		unsubscribeFromGastos();
-	});
 </script>
 
 <svelte:head>

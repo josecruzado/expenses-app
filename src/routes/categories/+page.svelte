@@ -1,9 +1,13 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
     import { fly, fade } from 'svelte/transition';
-    import { categorias, subscribeToCategorias, unsubscribeFromCategorias, categoriaService, loading, error, type Categoria } from '$lib/services/categoriaService.ts';
     import CategoryModal from '$lib/components/CategoryModal.svelte';
-
+    import type { Categoria } from '$lib/types';
+    import { 
+        categorias, 
+        loadingCategorias as loading, 
+        errorCategorias as error, 
+        categoriaService 
+    } from '$lib/services/categoriaService';
     // Estados
     let deletingIds = new Set<string>();
     let editingCategory: Categoria | null = null;
@@ -61,15 +65,6 @@
     }
 
     $: totalCategorias = $categorias.length;
-
-    // Inicializar y limpiar suscripciones automáticamente
-    onMount(() => { 
-        subscribeToCategorias();
-    });
-    
-    onDestroy(() => { 
-        unsubscribeFromCategorias();
-    });
 </script>
 
 <svelte:head>

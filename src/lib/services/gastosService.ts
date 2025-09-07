@@ -1,428 +1,146 @@
-import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db, gastos, loading, error, type Gasto } from '$lib/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { db } from '$lib/firebase';
 import { authStore } from '$lib/stores/auth';
 import { get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
-// Mantener tus funciones helper existentes
-export function parseSpanishDate(fecha: string): Date {
-	const monthMap: { [key: string]: number } = {
-		'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3,
-		'may': 4, 'jun': 5, 'jul': 6, 'ago': 7,
-		'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11
-	};
-	
-	const datePattern = /(\d{1,2})\s+([a-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.)/i;
-	const match = fecha.match(datePattern);
-	
-	if (match) {
-		const [, day, monthSpanish, year, hour, minute, period] = match;
-		const monthIndex = monthMap[monthSpanish.toLowerCase()];
-		
-		if (monthIndex !== undefined) {
-			const isPM = period.toLowerCase().includes('p');
-			let hour24 = parseInt(hour);
-			
-			if (isPM && hour24 !== 12) {
-				hour24 += 12;
-			} else if (!isPM && hour24 === 12) {
-				hour24 = 0;
-			}
-			
-			return new Date(parseInt(year), monthIndex, parseInt(day), hour24, parseInt(minute));
-		}
-	}
-	
-	return new Date(0); // Return epoch if parsing fails
-}
+// 1. Importar los tipos correctos y el store de categorías
+import type { GastoWithCategory, CreateGastoData, UpdateGastoData } from '$lib/types';
+import { categorias as allCategoriasStore } from './categoriaService';
 
+// 2. Stores locales para gastos
+export const gastos = writable<GastoWithCategory[]>([]);
+export const loadingGastos = writable<boolean>(true);
+export const errorGastos = writable<string | null>(null);
+
+// --- Funciones Helper (solo las necesarias) ---
 export function formatCurrency(amount: number): string {
-    return new Intl.NumberFormat('es-PE', {
-        style: 'currency',
-        currency: 'PEN',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(amount);
+    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount);
 }
 
-// Nuevo: separa icono y texto aunque no haya espacio
-export function splitCategoria(categoria: string): { icon: string; name: string } {
-	if (!categoria) return { icon: '', name: '' };
-	const s = String(categoria).trim();
-	// Captura un emoji (incluye ZWJ y variation selectors) al inicio, con espacio opcional después
-	const m = s.match(/^(\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)?)(?:\s+)?(.*)$/u);
-	if (m) {
-		return { icon: m[1] || '', name: (m[2] || '').trim() };
-	}
-	// Fallback: si empieza con no alfanumérico, toma el primer caracter como icono
-	const first = s[0];
-	if (/\p{Letter}|\p{Number}/u.test(first)) {
-		return { icon: '', name: s };
-	}
-	return { icon: first, name: s.slice(1).trim() };
+export function formatGastoDate(date: Date): string {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const inputDate = new Date(date);
+
+    // Formato de hora más legible (e.g., "5:30 p. m.")
+    const timeString = inputDate.toLocaleTimeString('es-PE', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+
+    // Clonar fechas para comparar solo el día (sin la hora)
+    const inputDateOnly = new Date(inputDate.getFullYear(), inputDate.getMonth(), inputDate.getDate());
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+
+    if (inputDateOnly.getTime() === todayOnly.getTime()) {
+        return `Hoy, ${timeString}`;
+    }
+
+    if (inputDateOnly.getTime() === yesterdayOnly.getTime()) {
+        return `Ayer, ${timeString}`;
+    }
+
+    // Formato de fecha más legible para otros días (e.g., "5 sep. 2025")
+    const dateString = inputDate.toLocaleDateString('es-PE', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    }).replace('.', ''); // Eliminar el punto que a veces agrega 'short' month
+
+    return `${dateString}, ${timeString}`;
 }
 
-// Reemplazar estas funciones para usar el split
-export function getCategoryIcon(categoria: string): string {
-	const { icon } = splitCategoria(categoria);
-	return icon || '💰'; // Default icon
-}
-export function getCategoryName(categoria: string): string {
-	const { name } = splitCategoria(categoria);
-	return name || categoria;
-}
-
-export function formatDate(fecha: string): string {
-	try {
-		// Spanish month mapping
-		const monthMap: { [key: string]: string } = {
-			'ene': 'Jan', 'feb': 'Feb', 'mar': 'Mar', 'abr': 'Apr',
-			'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'ago': 'Aug',
-			'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dic': 'Dec'
-		};
-		
-		// Parse Spanish date format: "17 jul 2025, 9:55 a.m."
-		const datePattern = /(\d{1,2})\s+([a-z]{3})\s+(\d{4}),?\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.)/i;
-		const match = fecha.match(datePattern);
-		
-		if (match) {
-			const [, day, monthSpanish, year, hour, minute, period] = match;
-			const monthEnglish = monthMap[monthSpanish.toLowerCase()];
-			
-			if (monthEnglish) {
-				// Create English date string
-				const isPM = period.toLowerCase().includes('p');
-				let hour24 = parseInt(hour);
-				
-				if (isPM && hour24 !== 12) {
-					hour24 += 12;
-				} else if (!isPM && hour24 === 12) {
-					hour24 = 0;
-				}
-				
-				const dateString = `${monthEnglish} ${day}, ${year} ${hour24.toString().padStart(2, '0')}:${minute}:00`;
-				const date = new Date(dateString);
-				
-				if (!isNaN(date.getTime())) {
-					const now = new Date();
-					const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-					const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-					const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-					
-					if (compareDate.getTime() === today.getTime()) {
-						return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-					} else if (compareDate.getTime() === yesterday.getTime()) {
-						return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-					} else {
-						return date.toLocaleDateString([], { 
-							month: 'short', 
-							day: 'numeric',
-							hour: '2-digit',
-							minute: '2-digit'
-						});
-					}
-				}
-			}
-		}
-		
-		// If parsing fails, return original
-		return fecha;
-	} catch (error) {
-		console.error('Date parsing error:', error);
-		return fecha; // Return original if parsing fails
-	}
-}
-
-// Servicio principal para Firestore
 class GastosService {
-	private unsubscribe: (() => void) | null = null;
+    private unsubscribeFromDb: (() => void) | null = null;
 
-	private getUserGastosRef() {
-		const user = get(authStore).user;
-		if (!user) {
-			throw new Error('Usuario no autenticado');
-		}
-		return collection(db, 'users', user.uid, 'expenses');
-	}
+    private getUserGastosRef() {
+        const user = get(authStore).user;
+        if (!user) throw new Error('Usuario no autenticado');
+        return collection(db, 'users', user.uid, 'expenses');
+    }
 
-	// Función para suscribirse a gastos (reemplaza subscribeToGastos)
-	subscribeToGastos() {
-		const user = get(authStore).user;
-		if (!user) {
-			error.set('Usuario no autenticado');
-			loading.set(false);
-			return;
-		}
+    subscribeToGastos() {
+        if (this.unsubscribeFromDb) return;
 
-		try {
-			loading.set(true);
-			error.set(null);
+        try {
+            loadingGastos.set(true);
+            errorGastos.set(null);
 
-			const gastosRef = this.getUserGastosRef();
-			
-			this.unsubscribe = onSnapshot(gastosRef, (snapshot) => {
-				try {
-					loading.set(false);
-					error.set(null);
-					
-					const gastosArray: Gasto[] = [];
-					
-					snapshot.forEach((doc) => {
-						const data = doc.data();
-						gastosArray.push({
-							id: doc.id,
-							categoria: data.categoria || '',
-							fecha: this.convertirTimestampAFecha(data.fecha), // Convertir timestamp a string
-							monto: data.monto || 0,
-							nota: data.nota || '',
-							uid: user.uid
-						});
-					});
-					
-					// Sort by date (most recent first) usando tu lógica existente
-					gastosArray.sort((a, b) => {
-						const dateA = parseSpanishDate(a.fecha);
-						const dateB = parseSpanishDate(b.fecha);
-						return dateB.getTime() - dateA.getTime();
-					});
-					
-					gastos.set(gastosArray);
-				} catch (err) {
-					console.error('Error processing gastos:', err);
-					error.set('Error al procesar los gastos');
-					loading.set(false);
-				}
-			}, (err) => {
-				console.error('Firestore error:', err);
-				error.set('Error de conexión con Firestore');
-				loading.set(false);
-			});
+            const q = query(this.getUserGastosRef(), orderBy('fecha', 'desc'));
+            
+            this.unsubscribeFromDb = onSnapshot(q, (snapshot) => {
+                // 3. Obtener las categorías actuales del store de categoriaService
+                const allCategorias = get(allCategoriasStore);
+                const defaultCategoria = { id: 'deleted', name: 'Eliminada', icon: '🗑️', isFavorite: false };
 
-		} catch (err) {
-			console.error('Error subscribing to gastos:', err);
-			error.set('Error al conectar con la base de datos');
-			loading.set(false);
-		}
-	}
+                const gastosArray: GastoWithCategory[] = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    const categoria = allCategorias.find(c => c.id === data.categoriaId) || defaultCategoria;
 
-	// Función para desuscribirse
-	unsubscribeFromGastos() {
-		if (this.unsubscribe) {
-			this.unsubscribe();
-			this.unsubscribe = null;
-		}
-	}
+                    // CAMBIO: Comprobar si `data.fecha` es un Timestamp antes de llamar a .toDate()
+                    // Esto maneja tanto los datos del servidor (Timestamp) como los datos locales (Date).
+                    const fechaValue = data.fecha;
+                    const fechaAsDate = fechaValue && typeof fechaValue.toDate === 'function' 
+                        ? fechaValue.toDate() 
+                        : fechaValue;
 
-	// Agregar nuevo gasto
-	async addGasto(gasto: Omit<Gasto, 'id' | 'uid'>): Promise<{ success: true; id: string } | { success: false; error: string }> {
-		try {
-			const user = get(authStore).user;
-			if (!user) {
-				throw new Error('Usuario no autenticado');
-			}
+                    return {
+                        id: doc.id,
+                        monto: data.monto,
+                        nota: data.nota,
+                        fecha: fechaAsDate, // Usar el valor ya convertido o el original si ya era Date
+                        categoriaId: data.categoriaId,
+                        categoria: categoria
+                    };
+                });
+                
+                gastos.set(gastosArray);
+                loadingGastos.set(false);
+            }, (err) => {
+                console.error('Firestore error:', err);
+                errorGastos.set('Error de conexión con Firestore');
+                loadingGastos.set(false);
+            });
 
-			const gastosRef = this.getUserGastosRef();
-			
-			// Convertir fecha string a timestamp para cumplir con las reglas
-			const fechaTimestamp = this.convertirTimestampAFecha(gasto.fecha);
-			
+        } catch (err) {
+            console.error('Error subscribing to gastos:', err);
+            errorGastos.set('Error al conectar con la base de datos');
+            loadingGastos.set(false);
+        }
+    }
 
-			const gastoData = {
-				monto: gasto.monto,
-				fecha: fechaTimestamp,
-				nota: gasto.nota,
-				categoria: gasto.categoria,
-				// No incluimos uid ni createdAt/updatedAt ya que no están en las reglas
-			};
+    unsubscribeFromGastos() {
+        if (this.unsubscribeFromDb) {
+            this.unsubscribeFromDb();
+            this.unsubscribeFromDb = null;
+            gastos.set([]); // Limpiar el store
+        }
+    }
 
-			const docRef = await addDoc(gastosRef, gastoData);
-			return { success: true, id: docRef.id };
-		} catch (e) {
-			const error = e as Error;
-			console.error('Error al agregar gasto:', error);
-            return { success: false, error: error.message || 'Ocurrió un error desconocido.' };
-		}
-	}
+    // 6. Usar la interfaz CreateGastoData
+    async addGasto(gastoData: CreateGastoData): Promise<string> {
+        // Firestore convierte el objeto Date a Timestamp automáticamente
+        const docRef = await addDoc(this.getUserGastosRef(), gastoData);
+        return docRef.id;
+    }
 
-	// Actualizar gasto
-	async updateGasto(id: string, updates: Partial<Omit<Gasto, 'id' | 'uid'>>): Promise<void> {
-		try {
-			const user = get(authStore).user;
-			if (!user) {
-				throw new Error('Usuario no autenticado');
-			}
+    // 7. Usar la interfaz UpdateGastoData
+    async updateGasto(id: string, updates: UpdateGastoData): Promise<void> {
+        const gastoRef = doc(this.getUserGastosRef(), id);
+        await updateDoc(gastoRef, updates);
+    }
 
-			const gastoRef = doc(db, 'users', user.uid, 'expenses', id);
-			
-			// Convertir fecha a timestamp si está incluida en la actualización
-			const updateData: any = { ...updates };
-			if (updates.fecha) {
-				updateData.fecha = this.convertirFechaATimestamp(updates.fecha);
-			}
+    async deleteGasto(id: string): Promise<void> {
+        const gastoRef = doc(this.getUserGastosRef(), id);
+        await deleteDoc(gastoRef);
+    }
 
-			await updateDoc(gastoRef, updateData);
-		} catch (error) {
-			console.error('Error al actualizar gasto:', error);
-			throw error;
-		}
-	}
-
-	// Eliminar gasto
-	async deleteGasto(id: string): Promise<void> {
-		try {
-			const user = get(authStore).user;
-			if (!user) {
-				throw new Error('Usuario no autenticado');
-			}
-
-			const gastoRef = doc(db, 'users', user.uid, 'expenses', id);
-			await deleteDoc(gastoRef);
-		} catch (error) {
-			console.error('Error al eliminar gasto:', error);
-			throw error;
-		}
-	}
-
-    // Obtener gastos por categoría
-	async getGastosByCategory(category: string): Promise<Gasto[]> {
-		try {
-			const gastosRef = this.getUserGastosRef();
-			const q = query(gastosRef, where('categoria', '==', category));
-			const querySnapshot = await getDocs(q);
-			
-			const gastosArray: Gasto[] = [];
-			querySnapshot.forEach((doc) => {
-				const data = doc.data();
-				gastosArray.push({
-					id: doc.id,
-					categoria: data.categoria,
-					fecha: this.convertirTimestampAFecha(data.fecha), // Convertir timestamp a string
-					monto: data.monto,
-					nota: data.nota,
-					uid: data.uid
-				});
-			});
-
-			// Sort by date
-			gastosArray.sort((a, b) => {
-				const dateA = parseSpanishDate(a.fecha);
-				const dateB = parseSpanishDate(b.fecha);
-				return dateB.getTime() - dateA.getTime();
-			});
-
-			return gastosArray;
-		} catch (error) {
-			console.error('Error al obtener gastos por categoría:', error);
-			throw error;
-		}
-	}
-
-	// Función para convertir fecha string española a Timestamp de Firestore
-	private convertirFechaATimestamp(fechaString: string): Date {
-		const fechaParsed = parseSpanishDate(fechaString);
-		return fechaParsed;
-	}
-
-	// Función para convertir Timestamp de Firestore a string español
-	private convertirTimestampAFecha(timestamp: any): string {
-		try {
-			// Si ya es un string, devolverlo tal como está
-			if (typeof timestamp === 'string') {
-				return timestamp;
-			}
-
-			// Si es un Timestamp de Firestore
-			if (timestamp && typeof timestamp.toDate === 'function') {
-				const date = timestamp.toDate();
-				return this.formatearFechaEspañol(date);
-			}
-
-			// Si es un Date object
-			if (timestamp instanceof Date) {
-				return this.formatearFechaEspañol(timestamp);
-			}
-
-			// Si no se puede convertir, devolver string vacío
-			console.warn('No se pudo convertir timestamp:', timestamp);
-			return '';
-		} catch (error) {
-			console.error('Error al convertir timestamp:', error);
-			return '';
-		}
-	}
-
-	// Función para formatear Date a string español (formato que espera tu app)
-	private formatearFechaEspañol(date: Date): string {
-		const meses = [
-			'ene', 'feb', 'mar', 'abr', 'may', 'jun',
-			'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
-		];
-
-		const dia = date.getDate();
-		const mes = meses[date.getMonth()];
-		const año = date.getFullYear();
-		
-		let horas = date.getHours();
-		const minutos = date.getMinutes().toString().padStart(2, '0');
-		const esPM = horas >= 12;
-		
-		if (horas === 0) {
-			horas = 12;
-		} else if (horas > 12) {
-			horas -= 12;
-		}
-		
-		const periodo = esPM ? 'p.m.' : 'a.m.';
-		
-		return `${dia} ${mes} ${año}, ${horas}:${minutos} ${periodo}`;
-	}
-
-	//Categorias
-	// Referencia a la colección de categorías del usuario
-	private getUserCategoriesRef() {
-		const user = get(authStore).user;
-		if (!user) {
-		throw new Error('Usuario no autenticado');
-		}
-		return collection(db, 'users', user.uid, 'categories');
-	}
-
-	// Crear nueva categoría
-	async addCategoria(nombre: string, isFavorite = true) {
-		const ref = this.getUserCategoriesRef();
-		const docRef = await addDoc(ref, {
-		name: nombre,
-		isFavorite,
-		createdAt: Timestamp.now()
-		});
-		return { id: docRef.id, name: nombre, isFavorite };
-	}
-
-	// Listar categorías del usuario
-	async getCategorias(): Promise<{ id: string; name: string; isFavorite: boolean }[]> {
-		const ref = this.getUserCategoriesRef();
-		const snap = await getDocs(ref);
-		return snap.docs.map(d => ({
-		id: d.id,
-		...(d.data() as any)
-		}));
-	}
-
-	// Actualizar categoría (ej: cambiar nombre, marcar favorito)
-	async updateCategoria(id: string, updates: Partial<{ name: string; isFavorite: boolean }>) {
-		const ref = doc(this.getUserCategoriesRef(), id);
-		await updateDoc(ref, updates);
-	}
-
-	// Eliminar categoría
-	async deleteCategoria(id: string) {
-		const ref = doc(this.getUserCategoriesRef(), id);
-		await deleteDoc(ref);
-	}
+    // 8. Se eliminan todos los métodos de categoría de este archivo.
 }
 
-// Exportar instancia del servicio
 export const gastosService = new GastosService();
-
-// Exportar las funciones principales para mantener compatibilidad
-export const subscribeToGastos = () => gastosService.subscribeToGastos();
-export const unsubscribeFromGastos = () => gastosService.unsubscribeFromGastos();

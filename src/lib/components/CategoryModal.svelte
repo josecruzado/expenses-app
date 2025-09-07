@@ -1,7 +1,8 @@
 <script lang="ts">
     import { createEventDispatcher, onMount } from 'svelte';
-    import { categoriaService, type Categoria } from '$lib/services/categoriaService.ts';
+    import { categoriaService } from '$lib/services/categoriaService.ts';
     import { fly } from 'svelte/transition';
+    import type { Categoria } from '$lib/types';
 
     // Propiedades del componente
     export let category: Categoria | null = null;
@@ -52,7 +53,11 @@
 
         try {
             if (isCreate) {
-                await categoriaService.addCategoria(editedName, editedIcon, editedIsFavorite);
+                await categoriaService.addCategoria({
+                    name: editedName,
+                    icon: editedIcon,
+                    isFavorite: editedIsFavorite,
+                });
             } else if (category) {
                 await categoriaService.updateCategoria(category.id, {
                     name: editedName,
