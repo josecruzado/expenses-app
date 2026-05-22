@@ -1,52 +1,52 @@
 <script lang="ts">
-    import { createEventDispatcher, onMount } from 'svelte';
+    import { onMount, untrack } from 'svelte';
     import { categoriaService } from '$lib/services/categoriaService.ts';
     import { fly } from 'svelte/transition';
     import type { Categoria } from '$lib/types';
 
-    // Propiedades del componente
-    export let category: Categoria | null = null;
-    
-    // Lógica para determinar si el modal es para crear o editar
-    const isCreate = !category;
-
-    // Estado interno del formulario, inicializado directamente
-    let editedName: string = category?.name || '';
-    let editedIcon: string = category?.icon || '✨';
-    let editedIsFavorite: boolean = category?.isFavorite || false;
-    let sending = false;
-    let errorMsg: string | null = null;
-
-    const dispatch = createEventDispatcher();
-    const suggestedEmojis = ["🍔","💰","🛍️","🚗","🏠","📄","🎉","🐾","🧘","📚","🎮","💊","✈️","👶"];
-
-    // Referencias a elementos del DOM
-    let dialogElement: HTMLDialogElement;
-    let nameInput: HTMLInputElement;
-
-    onMount(() => {
-        // Mostrar el modal y enfocar el input al montar el componente
-        dialogElement?.showModal();
-        nameInput?.focus();
-    });
-
-    function handleClose(): void {
-        if (dialogElement?.open) {
-            dialogElement.close();
-        }
-        dispatch('close');
+    interface Props {
+        category?: Categoria | null;
+        onclose?: (result: { success: boolean }) => void;
     }
 
-    function selectEmoji(emoji: string): void {
+    let { category = null, onclose }: Props = $props();
+
+    // El padre recrea el modal por cada categoría (via {#if}) — se captura el
+    // valor inicial intencionalmente. `untrack` evita el warning del compilador.
+    const initialCategory = untrack(() => category);
+    const isCreate = !initialCategory;
+
+    let editedName = $state(initialCategory?.name || '');
+    let editedIcon = $state(initialCategory?.icon || '✨');
+    let editedIsFavorite = $state(initialCategory?.isFavorite || false);
+    let sending = $state(false);
+    let errorMsg = $state<string | null>(null);
+
+    const suggestedEmojis = ['🍔', '💰', '🛍️', '🚗', '🏠', '📄', '🎉', '🐾', '🧘', '📚', '🎮', '💊', '✈️', '👶'];
+
+    let dialogElement = $state<HTMLDialogElement | null>(null);
+    let nameInput = $state<HTMLInputElement | null>(null);
+
+    onMount(() => {
+        dialogElement?.showModal();
+        nameInput?.focus({ preventScroll: true });
+    });
+
+    function close(success = false) {
+        if (dialogElement?.open) dialogElement.close();
+        onclose?.({ success });
+    }
+
+    function selectEmoji(emoji: string) {
         editedIcon = emoji;
     }
 
-    async function handleSaveCategory(): Promise<void> {
+    async function handleSubmit(e: SubmitEvent) {
+        e.preventDefault();
         if (!editedName.trim()) {
             errorMsg = 'El nombre de la categoría no puede estar vacío.';
             return;
         }
-        
         if (sending) return;
         sending = true;
         errorMsg = null;
@@ -56,16 +56,16 @@
                 await categoriaService.addCategoria({
                     name: editedName,
                     icon: editedIcon,
-                    isFavorite: editedIsFavorite,
+                    isFavorite: editedIsFavorite
                 });
-            } else if (category) {
-                await categoriaService.updateCategoria(category.id, {
+            } else if (initialCategory) {
+                await categoriaService.updateCategoria(initialCategory.id, {
                     name: editedName,
                     icon: editedIcon,
-                    isFavorite: editedIsFavorite,
+                    isFavorite: editedIsFavorite
                 });
             }
-            handleClose(); // Cierra el modal al guardar
+            close(true);
         } catch (err) {
             console.error('Save failed:', err);
             errorMsg = isCreate
@@ -76,34 +76,44 @@
         }
     }
 
-    // Manejar la tecla 'Escape' para cerrar el modal
     function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Escape') {
-            handleClose();
-        }
+        if (e.key === 'Escape') close(false);
+    }
+
+    function handleBackdropClick(e: MouseEvent) {
+        if (e.target === dialogElement) close(false);
     }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<dialog bind:this={dialogElement} on:close={handleClose} on:click|self={handleClose} class="modal">
+<dialog
+    bind:this={dialogElement}
+    onclose={() => close(false)}
+    onclick={handleBackdropClick}
+    class="modal"
+    aria-labelledby="category-modal-title"
+>
     <div class="modal-content">
         <div class="modal-header">
-            <h2>{isCreate ? 'Crear Categoría' : 'Editar Categoría'}</h2>
-            <button on:click={handleClose} class="close-button" aria-label="Cerrar">×</button>
+            <h2 id="category-modal-title">{isCreate ? 'Crear Categoría' : 'Editar Categoría'}</h2>
+            <button type="button" onclick={() => close(false)} class="close-button" aria-label="Cerrar">×</button>
         </div>
-        
-        <form on:submit|preventDefault={handleSaveCategory} class="edit-form">
+
+        <form onsubmit={handleSubmit} class="edit-form">
             <label for="category-name">Nombre</label>
             <input
                 type="text"
                 id="category-name"
+                name="name"
                 bind:value={editedName}
                 bind:this={nameInput}
                 class="input-field"
                 placeholder="Nombre de la categoría"
                 disabled={sending}
                 autocomplete="off"
+                autocapitalize="sentences"
+                enterkeyhint="done"
                 required
             />
 
@@ -113,24 +123,26 @@
                 id="category-icon"
                 bind:value={editedIcon}
                 class="input-field icon-field"
-                placeholder="Icono (ej: 🍔)"
+                placeholder="🍔"
                 maxlength="2"
                 disabled={sending}
                 autocomplete="off"
                 required
             />
-            <div class="emoji-list" aria-label="Elegir emoji">
+            <div class="emoji-list" role="radiogroup" aria-label="Elegir un emoji">
                 {#each suggestedEmojis as emoji}
-                    <button type="button"
+                    <button
+                        type="button"
                         class="emoji-btn"
-                        aria-label={"Seleccionar emoji " + emoji}
-                        on:click={() => selectEmoji(emoji)}
+                        role="radio"
+                        aria-checked={editedIcon === emoji}
+                        aria-label={`Usar ${emoji}`}
+                        onclick={() => selectEmoji(emoji)}
                         disabled={sending}
-                        aria-pressed={editedIcon === emoji}
                     >{emoji}</button>
                 {/each}
             </div>
-            
+
             <label class="favorite-label">
                 <input type="checkbox" bind:checked={editedIsFavorite} disabled={sending} />
                 Marcar como favorita
@@ -145,9 +157,9 @@
             <button type="submit" class="btn btn-primary" disabled={sending}>
                 {#if sending}
                     <span class="spinner" aria-hidden="true"></span>
-                    {isCreate ? "Creando..." : "Guardando..."}
+                    {isCreate ? 'Creando…' : 'Guardando…'}
                 {:else}
-                    {isCreate ? "Crear categoría" : "Guardar cambios"}
+                    {isCreate ? 'Crear categoría' : 'Guardar cambios'}
                 {/if}
             </button>
         </form>
@@ -155,24 +167,44 @@
 </dialog>
 
 <style>
+    /* Centrado EXPLÍCITO — ver nota en AddExpenseModal. El default UA de
+       :modal falla en iOS Safari standalone con altura intrínseca + width:100%. */
     .modal {
-        border: none;
-        padding: 0;
-        background: transparent;
-        max-width: 400px;
-        width: 90%;
-        border-radius: var(--radius-lg);
-        box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 10px 30px -5px rgba(0,0,0,0.3);
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
+        margin: 0;
+        border: none;
+        padding: 0;
+        background: transparent;
+        max-width: min(400px, calc(100vw - 32px));
+        width: 100%;
+        max-height: calc(
+            100dvh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom) -
+                24px
+        );
+        border-radius: var(--radius-lg);
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.05), 0 10px 30px -5px rgba(0,0,0,0.3);
+        overflow: visible;
     }
     .modal::backdrop {
-        background-color: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(4px);
+        background-color: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
     }
-    .modal-content { background: var(--color-bg-primary); padding: var(--spacing-xl); border-radius: var(--radius-lg); width: 100%; box-sizing: border-box;         border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.1));}
+    .modal-content {
+        background: var(--color-bg-primary);
+        padding: var(--spacing-xl);
+        border-radius: var(--radius-lg);
+        width: 100%;
+        max-height: inherit;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        box-sizing: border-box;
+        border: 1px solid var(--color-separator, rgba(255, 255, 255, 0.1));
+    }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md);}
     .close-button { background: none; border: none; font-size: 1.7em; color: var(--color-text-secondary); cursor: pointer;}
     .edit-form { display: flex; flex-direction: column; gap: var(--spacing-sm);}
@@ -186,7 +218,7 @@
         border-radius: var(--radius-md); cursor: pointer; padding: 2px 7px;
         transition: background 0.15s, border-color 0.15s;
     }
-    .emoji-btn[aria-pressed="true"] {
+    .emoji-btn[aria-checked="true"] {
         background: var(--color-fill-secondary); border-color: var(--color-blue);
         outline: 2px solid var(--color-blue);
     }

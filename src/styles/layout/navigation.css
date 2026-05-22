@@ -14,96 +14,6 @@
 	margin-bottom: var(--safe-area-inset-bottom);
 }
 
-/* === NAVEGACIÓN === */
-.nav-bar {
-	background: rgba(248, 248, 248, 0.8);
-	backdrop-filter: blur(20px);
-	-webkit-backdrop-filter: blur(20px);
-	border-bottom: 0.5px solid var(--color-separator);
-	padding: var(--spacing-sm) var(--spacing-md);
-	position: sticky;
-	top: 0;
-	z-index: var(--z-sticky);
-	
-	/* Safe area support */
-	padding-top: max(var(--safe-area-inset-top), var(--spacing-sm));
-}
-
-@media (prefers-color-scheme: dark) {
-	.nav-bar {
-		background: rgba(28, 28, 30, 0.8);
-	}
-}
-
-.nav-content {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	max-width: 1200px;
-	margin: 0 auto;
-}
-
-.nav-title {
-	font-size: var(--font-size-headline);
-	font-weight: var(--font-weight-semibold);
-	color: var(--color-text-primary);
-	margin: 0;
-}
-
-.nav-actions {
-	display: flex;
-	gap: var(--spacing-sm);
-}
-
-/* === TAB BAR === */
-.tab-bar {
-	background: var(--color-bg-secondary);
-	backdrop-filter: blur(20px);
-	-webkit-backdrop-filter: blur(20px);
-	border-top: 0.5px solid var(--color-separator);
-	padding: var(--spacing-sm) var(--spacing-md);
-	padding-bottom: max(var(--safe-area-inset-bottom), var(--spacing-sm));
-	position: fixed;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	z-index: var(--z-fixed);
-}
-
-.tab-content {
-	display: flex;
-	justify-content: space-around;
-	max-width: 600px;
-	margin: 0 auto;
-}
-
-.tab-item {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: var(--spacing-xs);
-	padding: var(--spacing-xs);
-	color: var(--color-text-secondary);
-	text-decoration: none;
-	transition: color var(--transition-normal);
-	min-width: 60px;
-}
-
-.tab-item.active {
-	color: var(--color-blue);
-}
-
-.tab-icon {
-	font-size: 20px;
-	line-height: 1;
-}
-
-.tab-label {
-	font-size: var(--font-size-caption-1);
-	font-weight: var(--font-weight-medium);
-	line-height: 1;
-}
-
 /* === MODALES === */
 .modal-overlay {
 	position: fixed;
@@ -324,14 +234,6 @@
 }
 
 @media (min-width: 769px) {
-	.tab-bar {
-		display: none; /* Hide tab bar on desktop */
-	}
-	
-	.nav-bar {
-		position: relative; /* Not sticky on desktop */
-	}
-	
 	.main-content {
 		max-width: 1200px;
 		margin: 0 auto;

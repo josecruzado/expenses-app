@@ -1,21 +1,21 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { authMethods } from '$lib/stores/auth';
-  
-  let isSignUp = false;
-  let email = '';
-  let password = '';
-  let confirmPassword = '';
-  let loading = false;
-  let error = '';
-  let showPassword = false;
-  let showConfirmPassword = false;
-  
-  // Variables para validaciones
-  let emailValid = true;
-  let passwordValid = true;
-  let emailTouched = false;
-  let passwordTouched = false;
+
+  let isSignUp = $state(false);
+  let email = $state('');
+  let password = $state('');
+  let confirmPassword = $state('');
+  let loading = $state(false);
+  let error = $state('');
+  let showPassword = $state(false);
+  let showConfirmPassword = $state(false);
+
+  let emailTouched = $state(false);
+  let passwordTouched = $state(false);
+
+  const emailValid = $derived(!email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  const passwordValid = $derived(!password || password.length >= 6);
 
   onMount(() => {
     document.body.classList.add('login-lock');
@@ -25,62 +25,38 @@
     document.body.classList.remove('login-lock');
   });
 
-  // Validación de email
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  // Validación de contraseña
-  const validatePassword = (password: string): boolean => {
-    return password.length >= 6;
-  };
-
-  // Handlers para validaciones en tiempo real
-  const handleEmailInput = () => {
+  function handleEmailInput() {
     emailTouched = true;
-    emailValid = validateEmail(email);
-  };
+  }
 
-  const handlePasswordInput = () => {
+  function handlePasswordInput() {
     passwordTouched = true;
-    passwordValid = validatePassword(password);
-  };
+  }
 
-  const toggleMode = () => {
+  function toggleMode() {
     isSignUp = !isSignUp;
     error = '';
-    email = '';
     password = '';
     confirmPassword = '';
     showPassword = false;
     showConfirmPassword = false;
-    emailValid = true;
-    passwordValid = true;
-    emailTouched = false;
     passwordTouched = false;
-  };
+  }
 
-  const handleEmailAuth = async () => {
-    // Validar campos requeridos
+  async function handleEmailAuth(e?: SubmitEvent) {
+    e?.preventDefault();
     if (!email || !password) {
       error = 'Por favor completa todos los campos';
       return;
     }
-
-    // Validar formato de email
-    if (!validateEmail(email)) {
+    if (!emailValid) {
       error = 'Por favor ingresa un correo electrónico válido';
       return;
     }
-
-    // Validar contraseñas coinciden en registro
     if (isSignUp && password !== confirmPassword) {
       error = 'Las contraseñas no coinciden';
       return;
     }
-
-    // Validar longitud de contraseña
     if (password.length < 6) {
       error = 'La contraseña debe tener al menos 6 caracteres';
       return;
@@ -89,36 +65,25 @@
     loading = true;
     error = '';
 
-    const result = isSignUp 
+    const result = isSignUp
       ? await authMethods.signUpWithEmail(email, password)
       : await authMethods.signInWithEmail(email, password);
 
     if (!result.success) {
-      error = result.error?? 'Ocurrió un error. Intenta nuevamente';
+      error = result.error ?? 'Ocurrió un error. Intenta nuevamente';
     }
-
     loading = false;
-  };
+  }
 
-  const handleGoogleAuth = async () => {
+  async function handleGoogleAuth() {
     loading = true;
     error = '';
-    
     const result = await authMethods.signInWithGoogle();
-    
     if (!result.success) {
-      error = result.error?? 'Ocurrió un error. Intenta nuevamente';
+      error = result.error ?? 'Ocurrió un error. Intenta nuevamente';
     }
-    
     loading = false;
-  };
-
-  // Handle enter key
-  const handleKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter') {
-      handleEmailAuth();
-    }
-  };
+  }
 </script>
 
 <div class="login-container">
@@ -133,8 +98,8 @@
       <h2>{isSignUp ? 'Crear cuenta' : 'Iniciar sesión'}</h2>
       
       {#if error}
-        <div class="error-message">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="error-message" role="alert" aria-live="assertive">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/>
             <line x1="15" y1="9" x2="9" y2="15"/>
             <line x1="9" y1="9" x2="15" y2="15"/>
@@ -143,48 +108,62 @@
         </div>
       {/if}
 
-      <form on:submit|preventDefault={handleEmailAuth}>
+      <form onsubmit={handleEmailAuth}>
         <!-- Campo Email -->
         <div class="input-group">
           <div class="input-wrapper" class:error={emailTouched && !emailValid}>
-            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
               <polyline points="22,6 12,13 2,6"/>
             </svg>
             <input
               type="email"
+              name="email"
+              autocomplete="email"
+              inputmode="email"
+              enterkeyhint="next"
+              autocapitalize="off"
+              autocorrect="off"
+              spellcheck="false"
+              aria-label="Correo electrónico"
+              aria-invalid={emailTouched && !emailValid}
+              aria-describedby={emailTouched && !emailValid && email ? 'email-error' : undefined}
               placeholder="Correo electrónico"
               bind:value={email}
-              on:input={handleEmailInput}
-              on:keydown={handleKeydown}
+              oninput={handleEmailInput}
               disabled={loading}
               class:error={emailTouched && !emailValid}
             />
             {#if emailTouched && emailValid && email}
-              <svg class="validation-icon success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg class="validation-icon success" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="20,6 9,17 4,12"/>
               </svg>
             {/if}
           </div>
           {#if emailTouched && !emailValid && email}
-            <div class="field-error">Ingresa un correo electrónico válido</div>
+            <div id="email-error" class="field-error">Ingresa un correo electrónico válido</div>
           {/if}
         </div>
 
         <!-- Campo Contraseña -->
         <div class="input-group">
           <div class="input-wrapper" class:error={passwordTouched && !passwordValid}>
-            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <circle cx="12" cy="16" r="1"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
             <input
               type={showPassword ? 'text' : 'password'}
+              name="password"
+              autocomplete={isSignUp ? 'new-password' : 'current-password'}
+              enterkeyhint={isSignUp ? 'next' : 'done'}
+              aria-label="Contraseña"
+              aria-invalid={passwordTouched && !passwordValid}
+              aria-describedby={passwordTouched && !passwordValid && password ? 'password-error' : undefined}
               placeholder="Contraseña"
               bind:value={password}
-              on:input={handlePasswordInput}
-              on:keydown={handleKeydown}
+              oninput={handlePasswordInput}
               disabled={loading}
               class:error={passwordTouched && !passwordValid}
             />
@@ -192,16 +171,18 @@
               <button
                 type="button"
                 class="toggle-password"
-                on:click={() => showPassword = !showPassword}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+                onclick={() => (showPassword = !showPassword)}
                 disabled={loading}
               >
                 {#if showPassword}
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                     <line x1="1" y1="1" x2="23" y2="23"/>
                   </svg>
                 {:else}
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                     <circle cx="12" cy="12" r="3"/>
                   </svg>
@@ -210,7 +191,7 @@
             {/if}
           </div>
           {#if passwordTouched && !passwordValid && password}
-            <div class="field-error">La contraseña debe tener al menos 6 caracteres</div>
+            <div id="password-error" class="field-error">La contraseña debe tener al menos 6 caracteres</div>
           {/if}
         </div>
 
@@ -218,32 +199,37 @@
         {#if isSignUp}
           <div class="input-group">
             <div class="input-wrapper">
-              <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                 <circle cx="12" cy="16" r="1"/>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
               </svg>
               <input
                 type={showConfirmPassword ? 'text' : 'password'}
+                name="confirm-password"
+                autocomplete="new-password"
+                enterkeyhint="done"
+                aria-label="Confirmar contraseña"
                 placeholder="Confirmar contraseña"
                 bind:value={confirmPassword}
-                on:keydown={handleKeydown}
                 disabled={loading}
               />
               {#if confirmPassword}
                 <button
                   type="button"
                   class="toggle-password"
-                  on:click={() => showConfirmPassword = !showConfirmPassword}
+                  aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                  aria-pressed={showConfirmPassword}
+                  onclick={() => (showConfirmPassword = !showConfirmPassword)}
                   disabled={loading}
                 >
                   {#if showConfirmPassword}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
                       <line x1="1" y1="1" x2="23" y2="23"/>
                     </svg>
                   {:else}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                       <circle cx="12" cy="12" r="3"/>
                     </svg>
@@ -280,7 +266,7 @@
         <span>o</span>
       </div>
 
-      <button class="btn-google" on:click={handleGoogleAuth} disabled={loading}>
+      <button type="button" class="btn-google" onclick={handleGoogleAuth} disabled={loading}>
         <svg width="20" height="20" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
           <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -293,7 +279,7 @@
       <div class="toggle-mode">
         <p>
           {isSignUp ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'}
-          <button type="button" on:click={toggleMode} disabled={loading}>
+          <button type="button" onclick={toggleMode} disabled={loading}>
             {isSignUp ? 'Inicia sesión' : 'Regístrate'}
           </button>
         </p>

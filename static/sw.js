@@ -24,46 +24,45 @@ const IOS_SPECIFIC_FILES = [
 
 const ALL_CACHE_FILES = [...STATIC_FILES, ...IOS_SPECIFIC_FILES];
 
-// Install event - cache static files
+// Install event - cache static files.
+// NOTE: We deliberately do NOT call skipWaiting() here. The app prompts the
+// user via the update banner and only then sends a SKIP_WAITING message.
 self.addEventListener('install', (event) => {
-  console.log('Service Worker installing...');
-  
   event.waitUntil(
-    Promise.all([
-      caches.open(STATIC_CACHE_NAME).then((cache) => {
-        console.log('Caching static files...');
-        return cache.addAll(ALL_CACHE_FILES);
-      }),
-      // Skip waiting to activate immediately
-      self.skipWaiting()
-    ])
+    caches.open(STATIC_CACHE_NAME).then((cache) => cache.addAll(ALL_CACHE_FILES))
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and enable navigation preload.
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker activating...');
-  
   event.waitUntil(
-    Promise.all([
-      // Clean up old caches
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (
-              cacheName !== STATIC_CACHE_NAME && 
-              cacheName !== DYNAMIC_CACHE_NAME &&
-              cacheName !== CACHE_NAME
-            ) {
-              console.log('Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      // Take control of all clients
-      self.clients.claim()
-    ])
+    (async () => {
+      // Navigation preload elimina la latencia de arranque del SW en
+      // requests de navegación. Inocuo en navegadores sin soporte (Safari).
+      if (self.registration.navigationPreload) {
+        try {
+          await self.registration.navigationPreload.enable();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames.map((cacheName) => {
+          if (
+            cacheName !== STATIC_CACHE_NAME &&
+            cacheName !== DYNAMIC_CACHE_NAME &&
+            cacheName !== CACHE_NAME
+          ) {
+            return caches.delete(cacheName);
+          }
+          return undefined;
+        })
+      );
+
+      await self.clients.claim();
+    })()
   );
 });
 
@@ -79,18 +78,18 @@ self.addEventListener('fetch', (event) => {
 
   // Handle different types of requests
   if (request.method === 'GET') {
-    event.respondWith(handleGetRequest(request));
+    event.respondWith(handleGetRequest(request, event));
   }
 });
 
 // Handle GET requests with cache-first strategy for static files
-async function handleGetRequest(request) {
+async function handleGetRequest(request, event) {
   const url = new URL(request.url);
-  
+
   try {
     // For navigation requests (pages)
     if (request.mode === 'navigate') {
-      return await handleNavigationRequest(request);
+      return await handleNavigationRequest(request, event);
     }
     
     // For static assets
@@ -115,10 +114,13 @@ async function handleGetRequest(request) {
 }
 
 // Handle navigation requests (pages)
-async function handleNavigationRequest(request) {
+async function handleNavigationRequest(request, event) {
   try {
-    // Try network first for navigation
-    const networkResponse = await fetch(request);
+    // navigationPreload entrega la respuesta de red ya pedida en paralelo
+    // al arranque del SW. Cuando no está disponible (Safari/iOS) caemos
+    // a un fetch normal.
+    const preload = event && event.preloadResponse ? await event.preloadResponse : null;
+    const networkResponse = preload || (await fetch(request));
     
     // Cache successful responses
     if (networkResponse.ok) {
@@ -201,25 +203,13 @@ function isStaticAsset(pathname) {
   return staticExtensions.some(ext => pathname.endsWith(ext));
 }
 
-// Handle background sync for iOS (limited support)
-self.addEventListener('sync', (event) => {
-  console.log('Background sync triggered:', event.tag);
-  
-  if (event.tag === 'expense-sync') {
-    event.waitUntil(syncExpenseData());
-  }
-});
+// Background Sync — placeholder. WebKit/iOS no implementa la Background
+// Sync API; el listener queda como hook para cuando se cablee el queue de
+// gastos offline. No hace nada hoy a propósito.
 
-async function syncExpenseData() {
-  // Implement expense data synchronization
-  console.log('Syncing expense data...');
-  // This would sync any offline expense data when connection is restored
-}
-
-// Handle push notifications (for iOS support)
+// Push notifications. iOS 16.4+ requiere la PWA instalada para entregar
+// pushes. Sin VAPID configurado el flujo no se activa todavía.
 self.addEventListener('push', (event) => {
-  console.log('Push notification received:', event);
-  
   if (event.data) {
     const options = {
       body: event.data.text() || 'New expense reminder',
@@ -247,8 +237,6 @@ self.addEventListener('push', (event) => {
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
-  console.log('Notification clicked:', event);
-  
   event.notification.close();
   
   event.waitUntil(
@@ -268,17 +256,18 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// iOS specific: Handle app badge updates
+// Message handler — listens for app-driven commands.
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'UPDATE_BADGE') {
-    // iOS doesn't support navigator.setAppBadge yet, but we can prepare for it
-    console.log('Badge update requested:', event.data.count);
-    
-    // For future iOS support:
-    // if ('setAppBadge' in navigator) {
-    //   navigator.setAppBadge(event.data.count);
-    // }
+  if (!event.data) return;
+
+  // User accepted the update banner → activate the waiting worker now.
+  if (event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+
+  if (event.data.type === 'SYNC_DATA') {
+    // Hook for future Background Sync work.
+    return;
   }
 });
-
-console.log('Service Worker loaded successfully');

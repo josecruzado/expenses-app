@@ -35,7 +35,7 @@ export const authMethods = {
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
       return { success: true, user: result.user };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return { success: false, error: translateFirebaseError(error) };
     }
   },
@@ -44,7 +44,7 @@ export const authMethods = {
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       return { success: true, user: result.user };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return { success: false, error: translateFirebaseError(error) };
     }
   },
@@ -53,7 +53,7 @@ export const authMethods = {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       return { success: true, user: result.user };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return { success: false, error: translateFirebaseError(error) };
     }
   },
@@ -62,7 +62,7 @@ export const authMethods = {
     try {
       await signOut(auth);
       return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return { success: false, error: translateFirebaseError(error) };
     }
   }

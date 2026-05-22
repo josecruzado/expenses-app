@@ -1,67 +1,25 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
-	
-	let showSplash = $state(true);
-	let isLoading = $state(true);
-
-	onMount(() => {
-		if (browser) {
-			// Show splash for a minimum time to feel native
-			const minSplashTime = 1500;
-			const startTime = Date.now();
-			
-			// Simulate app initialization
-			Promise.all([
-				// Wait for minimum splash time
-				new Promise(resolve => setTimeout(resolve, minSplashTime)),
-				// Wait for app to be ready (you can add actual initialization here)
-				new Promise(resolve => {
-					// Add any async initialization here
-					// For example: loading user preferences, checking authentication, etc.
-					setTimeout(resolve, 500);
-				})
-			]).then(() => {
-				isLoading = false;
-				// Add a small delay for smooth transition
-				setTimeout(() => {
-					showSplash = false;
-				}, 300);
-			});
-		}
-	});
+	// Visibility is controlled entirely by the parent (+layout.svelte) via
+	// $authStore.initialized + a minimum-show timer. Keep this component pure.
 </script>
 
-{#if showSplash}
-	<div class="splash-screen" class:loading={isLoading}>
-		<div class="splash-content">
-			<!-- App Icon -->
-			<div class="app-icon">
-				<div class="icon-background">
-					<span class="icon-emoji">💰</span>
-				</div>
-			</div>
-			
-			<!-- App Name -->
-			<h1 class="app-title">Expenses</h1>
-			
-			<!-- Loading Animation -->
-			{#if isLoading}
-				<div class="loading-spinner">
-					<div class="spinner"></div>
-				</div>
-			{/if}
-			
-			<!-- Version Info (Optional) -->
-			<div class="app-info">
-				<p class="version">Version 1.0.0</p>
+<div class="splash-screen" aria-busy="true" aria-label="Cargando">
+	<div class="splash-content">
+		<div class="app-icon">
+			<div class="icon-background">
+				<span class="icon-emoji" aria-hidden="true">💰</span>
 			</div>
 		</div>
-		
-		<!-- iOS-style background -->
-		<div class="splash-background"></div>
+
+		<h1 class="app-title">Expenses</h1>
+
+		<div class="loading-spinner">
+			<div class="spinner"></div>
+		</div>
 	</div>
-{/if}
+
+	<div class="splash-background" aria-hidden="true"></div>
+</div>
 
 <style>
 	.splash-screen {
@@ -83,17 +41,8 @@
 		padding-bottom: var(--safe-area-inset-bottom);
 		padding-left: var(--safe-area-inset-left);
 		padding-right: var(--safe-area-inset-right);
-		
-		/* Transition out */
-		opacity: 1;
-		transition: opacity 0.3s ease-out;
 	}
-	
-	.splash-screen:not(.loading) {
-		opacity: 0;
-		pointer-events: none;
-	}
-	
+
 	.splash-content {
 		display: flex;
 		flex-direction: column;
@@ -159,10 +108,9 @@
 	}
 	
 	.loading-spinner {
-		margin-bottom: var(--spacing-xl);
 		animation: spinnerFadeIn 1s ease-out 0.4s both;
 	}
-	
+
 	.spinner {
 		width: 32px;
 		height: 32px;
@@ -171,18 +119,7 @@
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
-	
-	.app-info {
-		animation: infoFadeIn 1s ease-out 0.6s both;
-	}
-	
-	.version {
-		font-size: var(--font-size-caption-1);
-		color: var(--color-text-tertiary);
-		margin: 0;
-		font-weight: var(--font-weight-medium);
-	}
-	
+
 	.splash-background {
 		position: absolute;
 		top: 0;
@@ -232,15 +169,6 @@
 		}
 	}
 	
-	@keyframes infoFadeIn {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
-	}
-	
 	@keyframes spin {
 		from {
 			transform: rotate(0deg);
@@ -267,11 +195,10 @@
 		.splash-screen,
 		.app-icon,
 		.app-title,
-		.loading-spinner,
-		.app-info {
+		.loading-spinner {
 			animation: none;
 		}
-		
+
 		.spinner {
 			animation: spin 2s linear infinite;
 		}

@@ -55,13 +55,38 @@ export function formatGastoDate(date: Date): string {
     return `${dateString}, ${timeString}`;
 }
 
+interface RawGasto {
+    id: string;
+    categoriaId: string;
+    fecha: Date;
+    monto: number;
+    nota?: string;
+}
+
+const DEFAULT_CATEGORIA = { id: 'deleted', name: 'Eliminada', icon: '🗑️', isFavorite: false };
+
 class GastosService {
     private unsubscribeFromDb: (() => void) | null = null;
+    private unsubscribeFromCategorias: (() => void) | null = null;
+    private rawGastos: RawGasto[] = [];
 
     private getUserGastosRef() {
         const user = get(authStore).user;
         if (!user) throw new Error('Usuario no autenticado');
         return collection(db, 'users', user.uid, 'expenses');
+    }
+
+    // Recompone gastos + categoría actual. Se llama cuando cambia el snapshot
+    // de Firestore O cuando el usuario edita/agrega categorías (de lo
+    // contrario gasto.categoria quedaba congelado al último snapshot).
+    private rebuildGastos() {
+        const allCategorias = get(allCategoriasStore);
+        gastos.set(
+            this.rawGastos.map((g) => ({
+                ...g,
+                categoria: allCategorias.find((c) => c.id === g.categoriaId) ?? DEFAULT_CATEGORIA
+            }))
+        );
     }
 
     subscribeToGastos() {
@@ -72,41 +97,39 @@ class GastosService {
             errorGastos.set(null);
 
             const q = query(this.getUserGastosRef(), orderBy('fecha', 'desc'));
-            
-            this.unsubscribeFromDb = onSnapshot(q, (snapshot) => {
-                // 3. Obtener las categorías actuales del store de categoriaService
-                const allCategorias = get(allCategoriasStore);
-                const defaultCategoria = { id: 'deleted', name: 'Eliminada', icon: '🗑️', isFavorite: false };
 
-                const gastosArray: GastoWithCategory[] = snapshot.docs.map(doc => {
-                    const data = doc.data();
-                    const categoria = allCategorias.find(c => c.id === data.categoriaId) || defaultCategoria;
+            this.unsubscribeFromDb = onSnapshot(
+                q,
+                (snapshot) => {
+                    this.rawGastos = snapshot.docs.map((doc) => {
+                        const data = doc.data();
+                        const fechaValue = data.fecha;
+                        const fechaAsDate =
+                            fechaValue && typeof fechaValue.toDate === 'function'
+                                ? fechaValue.toDate()
+                                : fechaValue;
+                        return {
+                            id: doc.id,
+                            monto: data.monto,
+                            nota: data.nota,
+                            fecha: fechaAsDate,
+                            categoriaId: data.categoriaId
+                        };
+                    });
+                    this.rebuildGastos();
+                    loadingGastos.set(false);
+                },
+                (err) => {
+                    console.error('Firestore error:', err);
+                    errorGastos.set('Error de conexión con Firestore');
+                    loadingGastos.set(false);
+                }
+            );
 
-                    // CAMBIO: Comprobar si `data.fecha` es un Timestamp antes de llamar a .toDate()
-                    // Esto maneja tanto los datos del servidor (Timestamp) como los datos locales (Date).
-                    const fechaValue = data.fecha;
-                    const fechaAsDate = fechaValue && typeof fechaValue.toDate === 'function' 
-                        ? fechaValue.toDate() 
-                        : fechaValue;
-
-                    return {
-                        id: doc.id,
-                        monto: data.monto,
-                        nota: data.nota,
-                        fecha: fechaAsDate, // Usar el valor ya convertido o el original si ya era Date
-                        categoriaId: data.categoriaId,
-                        categoria: categoria
-                    };
-                });
-                
-                gastos.set(gastosArray);
-                loadingGastos.set(false);
-            }, (err) => {
-                console.error('Firestore error:', err);
-                errorGastos.set('Error de conexión con Firestore');
-                loadingGastos.set(false);
+            // Re-render cuando las categorías cambian (edición/creación).
+            this.unsubscribeFromCategorias = allCategoriasStore.subscribe(() => {
+                if (this.rawGastos.length > 0) this.rebuildGastos();
             });
-
         } catch (err) {
             console.error('Error subscribing to gastos:', err);
             errorGastos.set('Error al conectar con la base de datos');
@@ -118,8 +141,13 @@ class GastosService {
         if (this.unsubscribeFromDb) {
             this.unsubscribeFromDb();
             this.unsubscribeFromDb = null;
-            gastos.set([]); // Limpiar el store
         }
+        if (this.unsubscribeFromCategorias) {
+            this.unsubscribeFromCategorias();
+            this.unsubscribeFromCategorias = null;
+        }
+        this.rawGastos = [];
+        gastos.set([]);
     }
 
     // 6. Usar la interfaz CreateGastoData

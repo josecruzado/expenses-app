@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 	<head>
 		<meta charset="utf-8" />
 		
 		<!-- Basic Meta Tags -->
-		<meta name="description" content="Personal expenses tracking application optimized for iOS" />
-		<meta name="keywords" content="expenses, budget, finance, iOS, PWA" />
+		<meta name="description" content="Aplicación personal para gestionar gastos optimizada para iOS" />
+		<meta name="keywords" content="gastos, presupuesto, finanzas, iOS, PWA" />
 		<meta name="author" content="Expenses App" />
 		
 		<!-- Viewport and PWA Meta Tags -->
@@ -17,14 +17,15 @@
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="Expenses" />
-		<meta name="apple-touch-fullscreen" content="yes" />
-		
-		<!-- Theme Colors que coinciden con el Dynamic Island -->
-		<meta name="theme-color" content="#000000" />
+
+		<!-- Theme Colors (light/dark via media queries) -->
+		<!-- Bare tag sin `media` para que JS pueda sobrescribirla dinámicamente
+		     (dynamic-island.ts). Las dos siguientes son las que el sistema
+		     elige automáticamente según el esquema. -->
+		<meta name="theme-color" content="#f2f2f7" />
 		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2f7" />
 		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
 		<meta name="msapplication-navbutton-color" content="#000000" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		
 		<!-- iOS Safe Area Support -->
 		<meta name="supported-color-schemes" content="light dark" />
@@ -35,22 +36,11 @@
 		
 		<!-- Icons -->
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
-		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
-		<link rel="apple-touch-icon" sizes="57x57" href="%sveltekit.assets%/apple-touch-icon-57x57.png" />
-		<link rel="apple-touch-icon" sizes="60x60" href="%sveltekit.assets%/apple-touch-icon-60x60.png" />
-		<link rel="apple-touch-icon" sizes="72x72" href="%sveltekit.assets%/apple-touch-icon-72x72.png" />
-		<link rel="apple-touch-icon" sizes="76x76" href="%sveltekit.assets%/apple-touch-icon-76x76.png" />
-		<link rel="apple-touch-icon" sizes="114x114" href="%sveltekit.assets%/apple-touch-icon-114x114.png" />
-		<link rel="apple-touch-icon" sizes="120x120" href="%sveltekit.assets%/apple-touch-icon-120x120.png" />
-		<link rel="apple-touch-icon" sizes="144x144" href="%sveltekit.assets%/apple-touch-icon-144x144.png" />
-		<link rel="apple-touch-icon" sizes="152x152" href="%sveltekit.assets%/apple-touch-icon-152x152.png" />
-		<link rel="apple-touch-icon" sizes="167x167" href="%sveltekit.assets%/apple-touch-icon-167x167.png" />
 		<link rel="apple-touch-icon" sizes="180x180" href="%sveltekit.assets%/apple-touch-icon-180x180.png" />
-		<link rel="apple-touch-icon" sizes="1024x1024" href="%sveltekit.assets%/apple-touch-icon-1024x1024.png" />
-		
-		<!-- iOS Splash Screens -->
-		<link rel="apple-touch-startup-image" href="%sveltekit.assets%/apple-touch-icon-1024x1024.png" />
-		
+		<link rel="apple-touch-icon" sizes="167x167" href="%sveltekit.assets%/apple-touch-icon-167x167.png" />
+		<link rel="apple-touch-icon" sizes="152x152" href="%sveltekit.assets%/apple-touch-icon-152x152.png" />
+		<link rel="apple-touch-icon" sizes="120x120" href="%sveltekit.assets%/apple-touch-icon-120x120.png" />
+
 		<!-- Preconnect for performance -->
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

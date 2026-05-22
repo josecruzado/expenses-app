@@ -11,7 +11,7 @@ export interface Gasto {
   categoriaId: string; // Referencia a la categoría
   fecha: Date; // Formato español
   monto: number;
-  nota: string;
+  nota?: string;
 }
 
 export interface GastoWithCategory extends Gasto {
@@ -22,7 +22,7 @@ export interface CreateGastoData {
   categoriaId: string;
   fecha: Date;
   monto: number;
-  nota: string;
+  nota?: string;
 }
 
 export interface UpdateGastoData extends Partial<CreateGastoData> {}

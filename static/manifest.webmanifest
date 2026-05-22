@@ -1,14 +1,15 @@
 {
-  "name": "Expenses App",
+  "id": "/",
+  "name": "Expenses",
   "short_name": "Expenses",
-  "description": "Personal expenses tracking application",
+  "description": "Gestión personal de gastos",
   "dir": "auto",
-  "lang": "en-US",
+  "lang": "es",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
+  "display_override": ["standalone", "window-controls-overlay"],
   "orientation": "portrait-primary",
   "scope": "/",
-  "start_url": "/",
+  "start_url": "/?source=pwa",
   "background_color": "#000000",
   "theme_color": "#000000",
   "launch_handler": {
@@ -18,79 +19,81 @@
     "preferred_width": 400
   },
   "categories": ["finance", "productivity"],
-  "iarc_rating_id": "e84b072d-71b3-4d3e-86ae-31a8ce4e53b7",
+  "shortcuts": [
+    {
+      "name": "Agregar gasto",
+      "short_name": "Nuevo gasto",
+      "description": "Registra un gasto rápidamente",
+      "url": "/?action=new-expense",
+      "icons": [
+        { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "Ver gastos del mes",
+      "short_name": "Gastos",
+      "description": "Lista de todos tus gastos",
+      "url": "/expenses",
+      "icons": [
+        { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    },
+    {
+      "name": "Categorías",
+      "short_name": "Categorías",
+      "description": "Administrar categorías",
+      "url": "/categories",
+      "icons": [
+        { "src": "/android-chrome-192x192.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    }
+  ],
   "screenshots": [
     {
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Expenses App Screenshot"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Add Expense",
-      "short_name": "Add",
-      "description": "Quickly add a new expense",
-      "url": "/add",
-      "icons": [{ "src": "/android-chrome-192x192.png", "sizes": "192x192" }]
-    }
-  ],
-  "icons": [
-    {
-      "src": "/android-chrome-36x36.png",
-      "sizes": "36x36",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-48x48.png",
-      "sizes": "48x48",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-72x72.png",
-      "sizes": "72x72",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-96x96.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-144x144.png",
-      "sizes": "144x144",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-256x256.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/android-chrome-384x384.png",
-      "sizes": "384x384",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "label": "Resumen mensual de gastos"
     },
     {
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide",
+      "label": "Dashboard en escritorio"
+    }
+  ],
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "monochrome"
     }
   ]
 }

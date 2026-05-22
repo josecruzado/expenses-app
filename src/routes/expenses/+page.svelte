@@ -1,152 +1,368 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { SvelteSet } from 'svelte/reactivity';
 	import TransactionItem from '$lib/components/TransactionItem.svelte';
-	import { 
-        gastos, 
-        gastosService, 
-        loadingGastos as loading, 
-        errorGastos as error, 
-        formatCurrency 
-    } from '$lib/services/gastosService';
-    import type { GastoWithCategory } from '$lib/types';
-    import type { Gasto } from '$lib/types';
+	import {
+		gastos,
+		gastosService,
+		loadingGastos as loading,
+		errorGastos as error,
+		formatCurrency
+	} from '$lib/services/gastosService';
+	import type { GastoWithCategory } from '$lib/types';
+	import { toastStore } from '$lib/stores/toast';
 
-	let searchTerm = '';
-	let selectedCategory = '';
-	let sortOrder = 'date-desc'; // 'date-desc', 'date-asc', 'amount-desc', 'amount-asc'
-	let deletingIds = new Set<string>(); // Track which items are being deleted
-	
-	// Get unique categories for filter
-    $: categories = [...new Set($gastos.map((gasto) => gasto.categoria.name))].sort();
-	
-	// Filter and sort gastos
-	// CAMBIO: Se usa el tipo GastoWithCategory y se accede a `gasto.categoria.name`.
-    $: filteredGastos = $gastos
-        .filter((gasto: GastoWithCategory) => {
-            const matchesSearch = !searchTerm || 
-                gasto.categoria.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                gasto.nota.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesCategory = !selectedCategory || gasto.categoria.name === selectedCategory;
-            return matchesSearch && matchesCategory;
-        })
-        .sort((a: GastoWithCategory, b: GastoWithCategory) => {
-            // CAMBIO: Añadir comprobaciones de seguridad para la ordenación por fecha.
-            switch (sortOrder) {
-                case 'date-asc':
-                case 'date-desc': {
-                    const aIsDate = a.fecha instanceof Date;
-                    const bIsDate = b.fecha instanceof Date;
+	type DateRange = 'all' | 'today' | 'week' | 'month';
 
-                    // Si una fecha no es válida, se mueve al final de la lista.
-                    if (!aIsDate) return 1;
-                    if (!bIsDate) return -1;
+	interface CategoryOption {
+		id: string;
+		name: string;
+		icon: string;
+		count: number;
+		total: number;
+	}
 
-                    // Si ambas son válidas, se comparan.
-                    return sortOrder === 'date-asc'
-                        ? a.fecha.getTime() - b.fecha.getTime()
-                        : b.fecha.getTime() - a.fecha.getTime();
-                }
-                case 'amount-desc':
-                    return Math.abs(b.monto) - Math.abs(a.monto);
-                case 'amount-asc':
-                    return Math.abs(a.monto) - Math.abs(b.monto);
-                default:
-                    return 0;
-            }
-        });
-	
-	// Calculate total of filtered results
-    $: totalAmount = filteredGastos.reduce((sum: number, gasto: GastoWithCategory) => sum + Math.abs(gasto.monto), 0);
+	interface ExpenseGroup {
+		key: string;
+		label: string;
+		total: number;
+		items: GastoWithCategory[];
+	}
 
-	// Handle delete expense
+	let searchTerm = $state('');
+	let selectedCategoryId = $state('');
+	let dateRange = $state<DateRange>('month');
+	let showAdvancedFilters = $state(false);
+	const deletingIds = new SvelteSet<string>();
+
+	const dateRangeOptions: { value: DateRange; label: string }[] = [
+		{ value: 'month', label: 'Mes' },
+		{ value: 'week', label: '7 días' },
+		{ value: 'today', label: 'Hoy' },
+		{ value: 'all', label: 'Todo' }
+	];
+
+	const categoryOptions = $derived.by(() => {
+		const options = new Map<string, CategoryOption>();
+
+		for (const gasto of $gastos) {
+			const id = gasto.categoriaId || gasto.categoria.id;
+			const current = options.get(id);
+			const amount = Math.abs(gasto.monto);
+
+			if (current) {
+				current.count += 1;
+				current.total += amount;
+				continue;
+			}
+
+			options.set(id, {
+				id,
+				name: gasto.categoria.name,
+				icon: gasto.categoria.icon,
+				count: 1,
+				total: amount
+			});
+		}
+
+		return [...options.values()].sort((a, b) => b.total - a.total);
+	});
+
+	const selectedCategoryName = $derived(
+		categoryOptions.find((category) => category.id === selectedCategoryId)?.name ?? ''
+	);
+
+	onMount(() => {
+		const categoryParam = page.url.searchParams.get('category');
+		if (categoryParam) {
+			selectedCategoryId = categoryParam;
+			dateRange = 'month';
+		}
+	});
+
+	function toValidDate(value: Date) {
+		const date = value instanceof Date ? value : new Date(value);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	function startOfDay(date: Date) {
+		return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+	}
+
+	function isSameDay(a: Date, b: Date) {
+		return (
+			a.getFullYear() === b.getFullYear() &&
+			a.getMonth() === b.getMonth() &&
+			a.getDate() === b.getDate()
+		);
+	}
+
+	function matchesDateRange(gasto: GastoWithCategory, range: DateRange) {
+		if (range === 'all') return true;
+
+		const date = toValidDate(gasto.fecha);
+		if (!date) return false;
+
+		const today = new Date();
+
+		if (range === 'today') return isSameDay(date, today);
+
+		if (range === 'week') {
+			const firstDay = startOfDay(today);
+			firstDay.setDate(firstDay.getDate() - 6);
+			return date >= firstDay;
+		}
+
+		return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+	}
+
+	function formatGroupKey(date: Date) {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		return `${year}-${month}-${day}`;
+	}
+
+	function formatGroupLabel(date: Date) {
+		const today = new Date();
+		const yesterday = new Date(today);
+		yesterday.setDate(yesterday.getDate() - 1);
+
+		if (isSameDay(date, today)) return 'Hoy';
+		if (isSameDay(date, yesterday)) return 'Ayer';
+
+		return date.toLocaleDateString('es-PE', {
+			weekday: 'short',
+			day: 'numeric',
+			month: 'short'
+		});
+	}
+
+	const filteredGastos = $derived.by(() => {
+		const term = searchTerm.trim().toLowerCase();
+		return $gastos
+			.filter((gasto: GastoWithCategory) => {
+				const matchesSearch =
+					!term ||
+					gasto.categoria.name.toLowerCase().includes(term) ||
+					(gasto.nota?.toLowerCase().includes(term) ?? false);
+				const matchesCategory = !selectedCategoryId || gasto.categoriaId === selectedCategoryId;
+				return matchesSearch && matchesCategory && matchesDateRange(gasto, dateRange);
+			})
+			.sort((a: GastoWithCategory, b: GastoWithCategory) => {
+				return (toValidDate(b.fecha)?.getTime() ?? 0) - (toValidDate(a.fecha)?.getTime() ?? 0);
+			});
+	});
+
+	const totalAmount = $derived(
+		filteredGastos.reduce((sum, gasto) => sum + Math.abs(gasto.monto), 0)
+	);
+
+	const selectedRangeLabel = $derived(
+		dateRangeOptions.find((option) => option.value === dateRange)?.label ?? 'Mes'
+	);
+
+	const groupedExpenses = $derived.by(() => {
+		const groups = new Map<string, ExpenseGroup>();
+
+		for (const gasto of filteredGastos) {
+			const date = toValidDate(gasto.fecha);
+			const key = date ? formatGroupKey(date) : 'sin-fecha';
+			const group = groups.get(key);
+
+			if (group) {
+				group.total += Math.abs(gasto.monto);
+				group.items.push(gasto);
+				continue;
+			}
+
+			groups.set(key, {
+				key,
+				label: date ? formatGroupLabel(date) : 'Sin fecha',
+				total: Math.abs(gasto.monto),
+				items: [gasto]
+			});
+		}
+
+		return [...groups.values()];
+	});
+
+	const hasActiveFilters = $derived(
+		Boolean(searchTerm.trim()) || Boolean(selectedCategoryId) || dateRange !== 'month'
+	);
+
+	function resetFilters() {
+		searchTerm = '';
+		selectedCategoryId = '';
+		dateRange = 'month';
+	}
+
 	async function handleDeleteGasto(id: string) {
 		if (deletingIds.has(id)) return;
-		
-		// Add haptic feedback for iOS
-		if (navigator.vibrate) {
-			navigator.vibrate(50);
-		}
-		
+		deletingIds.add(id);
 		try {
-			deletingIds = new Set([...deletingIds, id]);
 			await gastosService.deleteGasto(id);
-			
+			toastStore.success('Gasto eliminado');
 		} catch (err) {
 			console.error('Error deleting expense:', err);
-			// Show a more native-like alert
-			if ('webkitRequestFullScreen' in document.documentElement) {
-				// iOS-like alert
-				alert('No se pudo eliminar el gasto. Inténtalo de nuevo.');
-			} else {
-				alert('Error al eliminar el gasto. Por favor, inténtalo de nuevo.');
-			}
+			toastStore.error('No se pudo eliminar el gasto. Inténtalo de nuevo.');
 		} finally {
-			deletingIds = new Set([...deletingIds].filter(deletingId => deletingId !== id));
+			deletingIds.delete(id);
 		}
 	}
 </script>
 
 <svelte:head>
-	<title>All Expenses - Expenses</title>
-	<meta name="description" content="View all your expenses" />
-	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=yes" />
+	<title>Todos los gastos · Expenses</title>
+	<meta name="description" content="Consulta todos tus gastos" />
 </svelte:head>
 
-<section class="expenses">
-	<header class="page-header">
-		<h1 class="page-title">Todos los Gastos</h1>
+<section class="expenses" aria-label="Historial de gastos">
+	<header class="expenses-summary">
 		{#if !$loading}
-			<p class="page-subtitle">
-				{filteredGastos.length} transacción{filteredGastos.length !== 1 ? 'es' : ''} 
-				• Total: {formatCurrency(totalAmount)}
-			</p>
+			<div class="summary-total" aria-label={`Total filtrado ${formatCurrency(totalAmount)}`}>
+				<span>{selectedRangeLabel}</span>
+				<strong>{formatCurrency(totalAmount)}</strong>
+				<p>
+					{filteredGastos.length} movimiento{filteredGastos.length !== 1 ? 's' : ''}
+					{#if selectedCategoryName}
+						· {selectedCategoryName}
+					{:else if searchTerm.trim()}
+						· busqueda activa
+					{/if}
+				</p>
+			</div>
+		{:else}
+			<div class="summary-total">
+				<span>Historial</span>
+				<strong>Gastos</strong>
+				<p>Cargando movimientos</p>
+			</div>
 		{/if}
 	</header>
 
-	<div class="filters-section">
-		<div class="search-box">
-			<input 
-				type="text" 
-				placeholder="Buscar gastos..." 
-				bind:value={searchTerm}
-				class="search-input"
-			/>
+	<div class="filters-panel" aria-label="Filtros de gastos">
+		<div class="segment-row" role="group" aria-label="Periodo">
+			{#each dateRangeOptions as option}
+				<button
+					type="button"
+					class:active={dateRange === option.value}
+					aria-pressed={dateRange === option.value}
+					onclick={() => (dateRange = option.value)}
+				>
+					{option.label}
+				</button>
+			{/each}
 		</div>
-		
-		<div class="filter-controls">
-			<select bind:value={selectedCategory} class="filter-select">
-				<option value="">Todas las categorias</option>
-				{#each categories as category}
-					<option value={category}>{category}</option>
-				{/each}
-			</select>
-			
-			<select bind:value={sortOrder} class="filter-select">
-				<option value="date-desc">Más Reciente</option>
-				<option value="date-asc">Más Antiguo</option>
-				<option value="amount-desc">Mayor Cantidad</option>
-				<option value="amount-asc">Menor Cantidad</option>
-			</select>
+
+		<div class="list-toolbar">
+			<div class="toolbar-summary">
+				<span>{filteredGastos.length} movimiento{filteredGastos.length !== 1 ? 's' : ''}</span>
+				{#if selectedCategoryName}
+					<strong>{selectedCategoryName}</strong>
+				{:else if searchTerm.trim()}
+					<strong>Busqueda activa</strong>
+				{:else}
+					<strong>Ordenado por fecha</strong>
+				{/if}
+			</div>
+
+			<button
+				type="button"
+				class="advanced-button"
+				class:active={showAdvancedFilters}
+				aria-expanded={showAdvancedFilters}
+				onclick={() => (showAdvancedFilters = !showAdvancedFilters)}
+			>
+				{showAdvancedFilters ? 'Ocultar' : 'Buscar'}
+			</button>
+
+			{#if hasActiveFilters}
+				<button type="button" class="clear-button" onclick={resetFilters}>Limpiar</button>
+			{/if}
 		</div>
+
+		{#if showAdvancedFilters}
+			<div class="advanced-panel">
+				<input
+					type="search"
+					placeholder="Buscar por categoría o nota"
+					aria-label="Buscar gastos"
+					inputmode="search"
+					enterkeyhint="search"
+					autocomplete="off"
+					bind:value={searchTerm}
+					class="search-input"
+				/>
+
+				{#if categoryOptions.length > 0}
+					<div class="category-strip" aria-label="Categorías">
+						<button
+							type="button"
+							class="category-chip"
+							class:active={!selectedCategoryId}
+							aria-pressed={!selectedCategoryId}
+							onclick={() => (selectedCategoryId = '')}
+						>
+							<span class="chip-icon">•</span>
+							<span>Todas</span>
+						</button>
+						{#each categoryOptions as category}
+							<button
+								type="button"
+								class="category-chip"
+								class:active={selectedCategoryId === category.id}
+								aria-pressed={selectedCategoryId === category.id}
+								onclick={() => (selectedCategoryId = category.id)}
+							>
+								<span class="chip-icon">{category.icon}</span>
+								<span>{category.name}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if $loading}
-		<div class="loading-message">Loading all expenses...</div>
+		<div class="loading-message" role="status">Cargando gastos…</div>
 	{:else if $error}
-		<div class="error-message">{$error}</div>
+		<div class="error-message" role="alert">{$error}</div>
 	{:else if filteredGastos.length === 0}
 		<div class="empty-message">
-			{searchTerm || selectedCategory ? 'No expenses match your filters' : 'No expenses found'}
+			<strong>{searchTerm || selectedCategoryId || dateRange !== 'month' ? 'Sin resultados' : 'Aún no tienes gastos'}</strong>
+			<span>
+				{searchTerm || selectedCategoryId || dateRange !== 'month'
+					? 'Ajusta los filtros para revisar otros movimientos.'
+					: 'Cuando registres gastos aparecerán aquí agrupados por día.'}
+			</span>
 		</div>
 	{:else}
-		<div class="expenses-list">
-            {#each filteredGastos as gasto (gasto.id)}
-                <TransactionItem
-                    {gasto}
-                    isDeleting={deletingIds.has(gasto.id)}
-                    on:delete={() => handleDeleteGasto(gasto.id)}
-                />
-            {/each}
-        </div>
+		<div class="expense-groups">
+			{#each groupedExpenses as group (group.key)}
+				<section class="expense-group" aria-label={`${group.label}, ${formatCurrency(group.total)}`}>
+					<header class="group-header">
+						<div>
+							<h2>{group.label}</h2>
+							<span>{group.items.length} movimiento{group.items.length !== 1 ? 's' : ''}</span>
+						</div>
+						<strong>{formatCurrency(group.total)}</strong>
+					</header>
+
+					<div class="expenses-list">
+						{#each group.items as gasto (gasto.id)}
+							<TransactionItem
+								{gasto}
+								isDeleting={deletingIds.has(gasto.id)}
+								ondelete={handleDeleteGasto}
+							/>
+						{/each}
+					</div>
+				</section>
+			{/each}
+		</div>
 	{/if}
 </section>
 
@@ -154,57 +370,73 @@
 	.expenses {
 		display: flex;
 		flex-direction: column;
-		gap: var(--spacing-sm);
-		padding-bottom: var(--spacing-xl);
+		gap: 12px;
+		padding-bottom: calc(var(--spacing-xl) + 84px);
 		-webkit-overflow-scrolling: touch;
-		/* min-height: 100vh;  🔴 Esto empujaba todo al medio */
 		width: 100%;
 	}
-	
-	.page-header {
-		text-align: center;
-		margin-bottom: var(--spacing-md);
-		padding-top: var(--spacing-sm);
+
+	.expenses-summary {
+		padding: 16px 18px;
+		border: 1px solid color-mix(in srgb, var(--color-separator) 72%, transparent);
+		border-radius: 22px;
+		background:
+			linear-gradient(180deg, color-mix(in srgb, white 5%, transparent), transparent),
+			var(--color-bg-secondary);
+		box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
 	}
-	
-	.page-title {
-		font-size: var(--font-size-large-title);
-		font-weight: var(--font-weight-bold);
-		margin: 0 0 var(--spacing-xs) 0;
-		color: var(--color-text-primary);
+
+	.summary-total {
+		display: grid;
+		gap: 4px;
 	}
-	
-	.page-subtitle {
-		font-size: var(--font-size-body);
+
+	.summary-total span {
 		color: var(--color-text-secondary);
 		margin: 0;
-		font-weight: var(--font-weight-medium);
+		font-size: 12px;
+		font-weight: 750;
+		text-transform: uppercase;
 	}
-	
-	.filters-section {
+
+	.summary-total strong {
+		color: var(--color-red);
+		font-size: clamp(28px, 8vw, 38px);
+		line-height: 1.05;
+		font-weight: 850;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.summary-total p {
+		margin: 0;
+		color: var(--color-text-secondary);
+		font-size: 14px;
+		font-weight: 650;
+	}
+
+	.filters-panel {
 		display: flex;
 		flex-direction: column;
-		gap: var(--spacing-sm);
+		gap: 12px;
 		background: var(--color-bg-secondary);
-		border-radius: var(--radius-lg);
-		padding: var(--spacing-md);
-		border: 1px solid var(--color-separator);
-	}
-	
-	.search-box {
-		width: 100%;
+		border-radius: 22px;
+		padding: 12px;
+		border: 1px solid color-mix(in srgb, var(--color-separator) 72%, transparent);
 	}
 	
 	.search-input {
 		width: 100%;
-		padding: var(--spacing-sm) var(--spacing-md);
-		border: 1px solid var(--color-separator);
-		border-radius: var(--radius-md);
-		background: var(--color-fill-secondary);
+		min-height: 46px;
+		padding: 0 14px;
+		border: 1px solid color-mix(in srgb, var(--color-separator) 70%, transparent);
+		border-radius: 16px;
+		background: color-mix(in srgb, var(--color-fill-secondary) 82%, var(--color-bg-primary));
 		color: var(--color-text-primary);
-		font-size: var(--font-size-body);
+		font-size: 16px;
+		font-weight: 560;
 		box-sizing: border-box;
-		-webkit-appearance: none; /* Remove iOS styling */
+		appearance: none;
+		-webkit-appearance: none;
 	}
 	
 	.search-input:focus {
@@ -212,34 +444,213 @@
 		border-color: var(--color-blue);
 		background: var(--color-bg-primary);
 	}
-	
-	.filter-controls {
-		display: flex;
-		gap: var(--spacing-sm);
+
+	.segment-row,
+	.toolbar-summary {
+		display: grid;
+		gap: 6px;
+		padding: 4px;
+		border-radius: 16px;
+		background: color-mix(in srgb, var(--color-fill-secondary) 78%, transparent);
 	}
-	
-	.filter-select {
-		flex: 1;
-		padding: var(--spacing-sm) var(--spacing-md);
-		border: 1px solid var(--color-separator);
-		border-radius: var(--radius-md);
-		background: var(--color-fill-secondary);
-		color: var(--color-text-primary);
-		font-size: var(--font-size-body);
+
+	.segment-row {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+	}
+
+	.segment-row button {
+		min-width: 0;
+		min-height: 36px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 12px;
+		background: transparent;
+		color: var(--color-text-secondary);
+		font-size: 13px;
+		font-weight: 750;
 		cursor: pointer;
-		-webkit-appearance: none; /* Remove iOS styling */
+		-webkit-tap-highlight-color: transparent;
+		transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 	}
-	
-	.filter-select:focus {
-		outline: none;
-		border-color: var(--color-blue);
+
+	.segment-row button.active {
 		background: var(--color-bg-primary);
+		color: var(--color-text-primary);
+		box-shadow: 0 1px 4px color-mix(in srgb, black 12%, transparent);
+	}
+
+	.segment-row button:active,
+	.category-chip:active,
+	.clear-button:active,
+	.advanced-button:active {
+		transform: scale(0.98);
+	}
+
+	.category-strip {
+		display: flex;
+		gap: 8px;
+		overflow-x: auto;
+		scrollbar-width: none;
+		padding: 1px 2px 4px;
+		margin: 0 -2px;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.category-strip::-webkit-scrollbar {
+		display: none;
 	}
 	
+	.category-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		min-height: 38px;
+		max-width: 190px;
+		padding: 0 12px 0 8px;
+		border: 1px solid color-mix(in srgb, var(--color-separator) 70%, transparent);
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-fill-secondary) 74%, transparent);
+		color: var(--color-text-primary);
+		font-size: 13px;
+		font-weight: 750;
+		cursor: pointer;
+		white-space: nowrap;
+		-webkit-tap-highlight-color: transparent;
+		transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+	}
+
+	.category-chip span:last-child {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.category-chip.active {
+		border-color: var(--color-blue);
+		background: color-mix(in srgb, var(--color-blue) 14%, var(--color-bg-primary));
+		color: var(--color-blue);
+	}
+
+	.chip-icon {
+		width: 26px;
+		height: 26px;
+		border-radius: 10px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: color-mix(in srgb, var(--color-bg-primary) 72%, transparent);
+		font-size: 15px;
+		line-height: 1;
+		flex: 0 0 auto;
+	}
+
+	.list-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.toolbar-summary {
+		flex: 1;
+		min-width: 0;
+		background: transparent;
+		padding: 0;
+	}
+
+	.toolbar-summary span,
+	.toolbar-summary strong {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-size: 13px;
+		line-height: 1.25;
+	}
+
+	.toolbar-summary span {
+		color: var(--color-text-secondary);
+		font-weight: 650;
+	}
+
+	.toolbar-summary strong {
+		color: var(--color-text-primary);
+		font-weight: 800;
+	}
+
+	.advanced-button,
+	.clear-button {
+		min-height: 42px;
+		padding: 0 14px;
+		border: 1px solid color-mix(in srgb, var(--color-separator) 70%, transparent);
+		border-radius: 15px;
+		background: var(--color-bg-primary);
+		color: var(--color-blue);
+		font-size: 13px;
+		font-weight: 800;
+		cursor: pointer;
+		-webkit-tap-highlight-color: transparent;
+		transition: transform 140ms ease, background 140ms ease;
+	}
+
+	.advanced-button {
+		background: color-mix(in srgb, var(--color-blue) 12%, var(--color-bg-primary));
+		color: var(--color-blue);
+	}
+
+	.advanced-button.active {
+		background: var(--color-blue);
+		color: white;
+	}
+
+	.advanced-panel {
+		display: grid;
+		gap: 10px;
+		padding-top: 2px;
+	}
+	
+	.expense-groups {
+		display: grid;
+		gap: 14px;
+	}
+
+	.expense-group {
+		display: grid;
+		gap: 8px;
+	}
+
+	.group-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 2px 4px 0;
+	}
+
+	.group-header h2 {
+		margin: 0;
+		color: var(--color-text-primary);
+		font-size: 17px;
+		line-height: 1.2;
+		font-weight: 850;
+		text-transform: capitalize;
+	}
+
+	.group-header span {
+		color: var(--color-text-secondary);
+		font-size: 12px;
+		font-weight: 650;
+	}
+
+	.group-header strong {
+		color: var(--color-text-primary);
+		font-size: 15px;
+		font-weight: 850;
+		font-variant-numeric: tabular-nums;
+	}
+
 	.expenses-list {
 		display: flex;
 		flex-direction: column;
-		gap: var(--spacing-sm);
+		gap: 8px;
 		flex: 1;
 		width: 100%;
 	}
@@ -253,10 +664,15 @@
 	.error-message,
 	.empty-message {
 		background: var(--color-bg-secondary);
-		border-radius: var(--radius-lg);
+		border-radius: 22px;
 		padding: var(--spacing-xl);
 		text-align: center;
-		border: 1px solid var(--color-separator);
+		border: 1px solid color-mix(in srgb, var(--color-separator) 72%, transparent);
+	}
+
+	.empty-message {
+		display: grid;
+		gap: 6px;
 	}
 	
 	.loading-message {
@@ -272,42 +688,30 @@
 	.empty-message {
 		color: var(--color-text-secondary);
 	}
+
+	.empty-message strong {
+		color: var(--color-text-primary);
+		font-size: 17px;
+		font-weight: 850;
+	}
+
+	.empty-message span {
+		font-size: 14px;
+		line-height: 1.4;
+	}
 	
 	/* Responsive adjustments */
 	@media (max-width: 480px) {
 		.expenses {
-			padding: 0;
-			gap: var(--spacing-xs);
+			padding: 0 0 calc(var(--spacing-xl) + 84px);
+			gap: 12px;
 			margin: 0;
-			/* Quitamos padding-top heredado del safe-area */
 			padding-top: 0 !important;
 		}
 
-		.page-header {
-			margin-bottom: var(--spacing-xs);
-			padding-top: 0; /* 🔴 Esto evita el hueco en móvil */
-		}
-		
-        .page-title {
-            font-size: var(--font-size-title-1);
-			margin-bottom: var(--spacing-xs);
-        }
-		
-		.page-subtitle {
-			font-size: var(--font-size-callout);
-			margin-bottom: 0;
-		}
-		
-		.filters-section {
-			padding: var(--spacing-sm);
-		}
-		
-        .filter-controls {
-            flex-direction: column;
-        }
-		
-		.expenses-list {
-			gap: var(--spacing-xs);
+		.expenses-summary {
+			padding: 16px;
+			border-radius: 22px;
 		}
 		
 		.loading-message,
@@ -323,7 +727,7 @@
 		.expenses {
 			padding-left: max(var(--spacing-xs), env(safe-area-inset-left));
 			padding-right: max(var(--spacing-xs), env(safe-area-inset-right));
-			padding-bottom: max(var(--spacing-xl), env(safe-area-inset-bottom));
+			padding-bottom: max(calc(var(--spacing-xl) + 84px), calc(env(safe-area-inset-bottom) + 84px));
 			padding-top: max(var(--spacing-xs), env(safe-area-inset-top, var(--spacing-xs)));
 		}
 	}
@@ -335,15 +739,22 @@
 			overflow-x: hidden;
 		}
 		
-		.page-header,
-		.filters-section,
+		.expenses-summary,
+		.filters-panel,
 		.expenses-list {
 			width: 100%;
 		}
 		
-		.search-input,
-		.filter-select {
-			font-size: 16px; /* Evita zoom en iOS */
+		.search-input {
+			font-size: 16px;
+		}
+
+		.list-toolbar {
+			align-items: stretch;
+		}
+
+		.clear-button {
+			flex: 0 0 auto;
 		}
 	}
 </style>

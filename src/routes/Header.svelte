@@ -1,68 +1,55 @@
 <script lang="ts">
   import { authStore, authMethods } from '$lib/stores/auth';
-  import { page } from '$app/state';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
-  let showUserMenu = false;
+  let showUserMenu = $state(false);
+  let confirmLogout = $state(false);
+  let loggingOut = $state(false);
 
-  const handleLogout = async () => {
+  async function performLogout() {
+    loggingOut = true;
     const result = await authMethods.signOut();
+    loggingOut = false;
     if (result.success) {
       showUserMenu = false;
+      confirmLogout = false;
     }
-  };
+  }
 
-  const toggleUserMenu = () => {
+  function requestLogout() {
+    showUserMenu = false;
+    confirmLogout = true;
+  }
+
+  function toggleUserMenu() {
     showUserMenu = !showUserMenu;
-  };
+  }
 
-  // Cerrar con Escape
-  const handleKeydownGlobal = (e: KeyboardEvent) => {
+  function handleKeydownGlobal(e: KeyboardEvent) {
     if (e.key === 'Escape') showUserMenu = false;
-  };
+  }
 
-  // Cerrar menú si se hace clic fuera
-  const handleClickOutside = (event: MouseEvent) => {
+  function handleClickOutside(event: MouseEvent) {
     const target = event.target as HTMLElement;
     if (!target.closest('.user-menu-container')) {
       showUserMenu = false;
     }
-  };
+  }
 </script>
 
-<svelte:window on:click={handleClickOutside} on:keydown={handleKeydownGlobal} />
+<svelte:window onclick={handleClickOutside} onkeydown={handleKeydownGlobal} />
 
 <header>
   <div class="header-content">
-    <h1 class="app-title">Expenses</h1>
-    <nav>
-      <ul>
-        <li aria-current={page.url.pathname === '/' ? 'page' : undefined}>
-          <a href="/">
-            <span class="nav-icon">📊</span>
-            <span>Dashboard</span>
-          </a>
-        </li>
-        <li aria-current={page.url.pathname === '/expenses' ? 'page' : undefined}>
-          <a href="/expenses">
-            <span class="nav-icon">💰</span>
-            <span>Gastos</span>
-          </a>
-        </li>
-        <li aria-current={page.url.pathname === '/categories' ? 'page' : undefined}>
-          <a href="/categories">
-            <span class="nav-icon">📚</span>
-            <span>Categorías</span>
-          </a>
-        </li>
-      </ul>
-    </nav>
+    <!-- No es <h1>: cada página tiene su propio <h1>. Evita duplicado en a11y. -->
+    <p class="app-title" aria-hidden="true">Expenses</p>
 
     {#if $authStore.user}
       <div class="user-menu-container">
-        <button class="user-button" on:click={toggleUserMenu} aria-haspopup="menu" aria-expanded={showUserMenu} aria-controls="user-menu">
-          <div class="user-avatar">
+        <button class="user-button" onclick={toggleUserMenu} aria-haspopup="menu" aria-expanded={showUserMenu} aria-controls="user-menu">
+          <div class="user-avatar" aria-hidden="true">
             {#if $authStore.user.photoURL}
-              <img src={$authStore.user.photoURL} alt="Avatar" />
+              <img src={$authStore.user.photoURL} alt="" />
             {:else}
               <span>{$authStore.user.email?.charAt(0).toUpperCase()}</span>
             {/if}
@@ -74,7 +61,7 @@
         </button>
 
         {#if showUserMenu}
-          <div class="user-menu" id="user-menu" role="menu">
+          <div class="user-menu" id="user-menu" role="menu" aria-orientation="vertical">
             <div class="user-info">
               <p class="user-email">{$authStore.user.email}</p>
               {#if $authStore.user.displayName}
@@ -82,7 +69,7 @@
               {/if}
             </div>
             <hr />
-            <button class="menu-item logout" on:click={handleLogout} role="menuitem">
+            <button class="menu-item logout" onclick={requestLogout} role="menuitem">
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path fill="currentColor" d="M6 2v2H2v8h4v2H0V2h6zm3 0l5 4-5 4V7H4V5h5V2z"/>
               </svg>
@@ -95,21 +82,57 @@
   </div>
 </header>
 
+{#if confirmLogout}
+  <ConfirmDialog
+    title="¿Cerrar sesión?"
+    message="Tendrás que volver a iniciar sesión para acceder a tus gastos."
+    confirmLabel="Cerrar sesión"
+    variant="danger"
+    busy={loggingOut}
+    onconfirm={performLogout}
+    oncancel={() => (confirmLogout = false)}
+  />
+{/if}
+
 <style>
+  /* Header: cristal CSS-only. No usa LiquidGlass component porque al ser
+     full-width sin border-radius, la refracción física no aporta — solo
+     fondo blurred + tinte + separator inferior. SIN isolation/transform
+     porque convertirían al header en backdrop root y matarían el filtro. */
   header {
-    background: rgba(0, 0, 0, 0.8);
-    border-bottom: 0.5px solid var(--color-separator);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     position: sticky;
     top: 0;
     z-index: 100;
+    view-transition-name: site-header;
 
-    /* Por defecto (Android/desktop): SIN margen negativo, SIN padding con safe-area */
+    background: color-mix(in oklab, var(--color-bg-secondary) 64%, transparent);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+
+    border-bottom: 1px solid color-mix(in oklab, white 12%, transparent);
+    box-shadow:
+      inset 0 1px 0 0 color-mix(in oklab, white 35%, transparent),
+      0 1px 0 0 color-mix(in oklab, black 4%, transparent);
+
     padding-top: var(--spacing-sm);
     padding-left: max(var(--safe-area-inset-left), var(--spacing-md));
     padding-right: max(var(--safe-area-inset-right), var(--spacing-md));
     padding-bottom: var(--spacing-sm);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    header {
+      border-bottom-color: color-mix(in oklab, white 8%, transparent);
+      box-shadow:
+        inset 0 1px 0 0 color-mix(in oklab, white 14%, transparent),
+        0 1px 0 0 rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  @supports not (backdrop-filter: blur(1px)) {
+    header {
+      background: var(--color-bg-secondary);
+    }
   }
 
   /* Solo iOS: aplica el hack para que el fondo se extienda al notch y el contenido no se tape */
@@ -119,12 +142,11 @@
   }
 
   .header-content {
-    /* El contenido interno del header */
     max-width: 1280px;
     margin: 0 auto;
-    display: grid;
-    grid-template-columns: auto 1fr auto; /* Título | Nav | Menú Usuario */
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: var(--spacing-md);
   }
 
@@ -133,50 +155,9 @@
     font-weight: var(--font-weight-bold);
     color: var(--color-text-primary);
     margin: var(--spacing-sm) 0;
+    letter-spacing: -0.5px;
   }
 
-  nav ul {
-    display: flex;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    gap: var(--spacing-xs);
-    flex-wrap: wrap;
-  }
-
-  nav li[aria-current='page'] a {
-    background-color: var(--color-blue);
-    color: white;
-  }
-
-  nav a {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background-color: var(--color-fill-tertiary);
-    color: var(--color-text-primary);
-    text-decoration: none;
-    border-radius: var(--radius-xl);
-    font-size: var(--font-size-subhead);
-    font-weight: var(--font-weight-medium);
-    transition: all 0.2s ease;
-    min-width: 80px;
-    justify-content: center;
-  }
-
-  nav a:hover,
-  nav a:active {
-    background-color: var(--color-fill-secondary);
-    transform: scale(0.98);
-  }
-
-  .nav-icon {
-    font-size: 16px;
-    line-height: 1;
-  }
-
-  /* User menu styles from second component */
   .user-menu-container {
     position: relative;
   }
@@ -202,7 +183,7 @@
     width: 28px;
     height: 28px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, var(--color-blue) 0%, #0051d5 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -244,10 +225,10 @@
 
   .user-menu {
     position: absolute;
-    top: calc(100% + 8px); /* anclado al botón */
+    top: calc(100% + 8px);
     right: 0;
-    background: white;
-    border: 1px solid var(--color-border, #e5e7eb);
+    background: var(--color-bg-primary);
+    border: 1px solid var(--color-separator, var(--color-border, #e5e7eb));
     border-radius: 14px;
     box-shadow: 0 12px 24px rgba(0,0,0,0.12);
     min-width: 220px;
@@ -263,7 +244,7 @@
   .user-email {
     margin: 0;
     font-size: 0.9rem;
-    color: #111827; /* contraste alto */
+    color: var(--color-text-primary);
     font-weight: 600;
   }
 
@@ -301,50 +282,27 @@
   }
 
   .menu-item.logout {
-    color: #dc2626;
+    color: var(--color-red, #dc2626);
     font-weight: 600;
   }
 
   .menu-item.logout:hover {
-    background: #fef2f2;
+    background: color-mix(in oklab, var(--color-red, #dc2626) 12%, transparent);
   }
 
   @media (max-width: 480px) {
-    /* Coloca título a la izquierda y usuario a la derecha (fila 1), nav abajo (fila 2) */
-    .header-content {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      grid-auto-rows: auto;
-      align-items: center;
-      column-gap: var(--spacing-sm);
-      row-gap: var(--spacing-xs);
-    }
-
     .app-title {
-      grid-column: 1;
-      grid-row: 1;
-      margin: var(--spacing-sm) 0;
-    }
-
-    .user-menu-container {
-      grid-column: 2;
-      grid-row: 1;
-      justify-self: end;
-    }
-
-    nav {
-      grid-column: 1 / -1;
-      grid-row: 2;
+      font-size: var(--font-size-title-1);
     }
 
     .user-button {
       padding: 8px 12px;
-      min-height: 44px; /* guía iOS */
+      min-height: 44px;
       gap: 10px;
     }
 
     .user-label {
-      display: none; /* compacto en pantallas pequeñas */
+      display: none;
     }
 
     .user-menu {
@@ -355,64 +313,6 @@
     .menu-item {
       padding: 14px 14px;
       font-size: 1rem;
-    }
-  }
-
-  /* --- MODIFICACIÓN PARA VISTA DE ESCRITORIO --- */
-  @media (min-width: 768px) {
-    .header-content {
-      /* Cambiamos a Grid para un control preciso del layout de 3 columnas */
-      display: grid;
-      grid-template-columns: auto 1fr auto; /* Título | Navegación (flexible) | Menú Usuario */
-      align-items: center;
-      gap: var(--spacing-lg);
-      
-      max-width: 1280px; /* Aumentamos el ancho máximo para pantallas grandes */
-      padding-left: var(--spacing-lg);
-      padding-right: var(--spacing-lg);
-    }
-
-    .app-title {
-      grid-column: 1; /* Columna izquierda */
-      margin: 0;
-    }
-
-    nav {
-      grid-column: 2; /* Columna central */
-      justify-self: center; /* Centramos el bloque de navegación */
-    }
-
-    .user-menu-container {
-      grid-column: 3; /* Columna derecha */
-    }
-
-    nav ul {
-      justify-content: center;
-    }
-
-    nav a {
-      min-width: 100px;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .app-title {
-      text-align: center;
-    }
-    nav ul {
-      justify-content: center;
-    }
-  }
-
-  @media (prefers-color-scheme: light) {
-    header {
-      background: rgba(242, 242, 247, 0.8);
-    }
-  }
-
-  @media (prefers-color-scheme: dark) {
-    header {
-      background: rgba(0, 0, 0, 0.8);
     }
   }
 </style>

@@ -1,29 +1,32 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
-    // CAMBIO: Importar solo las funciones necesarias y el tipo correcto.
     import { formatCurrency, formatGastoDate } from '$lib/services/gastosService';
     import type { GastoWithCategory } from '$lib/types';
+    import ConfirmDialog from './ConfirmDialog.svelte';
 
-    // Props
-    // CAMBIO: Usar el tipo GastoWithCategory.
-    export let gasto: GastoWithCategory;
-    export let isDeleting: boolean = false;
-    export let showDeleteButton: boolean = true;
+    interface Props {
+        gasto: GastoWithCategory;
+        isDeleting?: boolean;
+        showDeleteButton?: boolean;
+        ondelete?: (id: string) => void;
+    }
 
-    const dispatch = createEventDispatcher();
+    let {
+        gasto,
+        isDeleting = false,
+        showDeleteButton = true,
+        ondelete
+    }: Props = $props();
 
-    function handleDelete() {
-        const confirmed = confirm(
-            `⚠️ ¿Eliminar este gasto?\n\n` +
-            `Categoría: ${gasto.categoria.name}\n` +
-            `Monto: ${formatCurrency(gasto.monto)}\n` +
-            (gasto.nota ? `Nota: ${gasto.nota}\n` : "") +
-            `\nEsta acción no se puede deshacer.`
-        );
+    let showConfirm = $state(false);
 
-        if (confirmed) {
-            dispatch("delete", { id: gasto.id });
-        }
+    function requestDelete(e: MouseEvent) {
+        e.stopPropagation();
+        showConfirm = true;
+    }
+
+    function confirmDelete() {
+        showConfirm = false;
+        ondelete?.(gasto.id);
     }
 </script>
 
@@ -43,19 +46,19 @@
         
         <!-- Icono de eliminación -->
         {#if showDeleteButton}
-        <button 
+        <button
             class="delete-icon-button"
-            on:click|stopPropagation={handleDelete}
+            onclick={requestDelete}
             disabled={isDeleting}
-            title="Eliminar gasto"
+            aria-label={`Eliminar gasto de ${gasto.categoria.name}, ${formatCurrency(gasto.monto)}`}
         >
             {#if isDeleting}
-                <div class="loading-spinner">⏳</div>
+                <span class="loading-spinner" aria-label="Eliminando…"></span>
             {:else}
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3 6h18"/>
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                    <path d="M8 6V4c0-1 1-2 2-2h4c-1 0 2 1 2 2v2"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     <line x1="10" y1="11" x2="10" y2="17"/>
                     <line x1="14" y1="11" x2="14" y2="17"/>
                 </svg>
@@ -65,125 +68,139 @@
     </div>
 </div>
 
+{#if showConfirm}
+    <ConfirmDialog
+        title="¿Eliminar este gasto?"
+        message={`${gasto.categoria.name} · ${formatCurrency(gasto.monto)}${gasto.nota ? '\n' + gasto.nota : ''}\n\nEsta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        variant="danger"
+        onconfirm={confirmDelete}
+        oncancel={() => (showConfirm = false)}
+    />
+{/if}
+
 <style>
     .expense-item-container {
         position: relative;
-        overflow: visible; /* importante: deja ver la sombra */
-        transition: box-shadow 0.2s ease;
+        overflow: visible;
     }
+
     .expense-item-container.deleting {
         opacity: 0.6;
         pointer-events: none;
     }
 
     .expense-item {
-        background: var(--color-bg-secondary);
-        border-radius: var(--radius-lg);
-        padding: var(--spacing-md);
-        display: flex;
+        display: grid;
+        grid-template-columns: 46px minmax(0, 1fr) auto auto;
         align-items: center;
-        gap: var(--spacing-sm);
-        border: 1px solid var(--color-separator);
-
-        position: relative;
-        z-index: 2;
-        -webkit-user-select: none;
-        user-select: none;
+        gap: 12px;
+        min-height: 68px;
+        padding: 12px;
+        border: 1px solid color-mix(in srgb, var(--color-separator) 72%, transparent);
+        border-radius: 20px;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, white 4%, transparent), transparent),
+            var(--color-bg-secondary);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, white 7%, transparent);
         -webkit-tap-highlight-color: transparent;
-        cursor: pointer;
-
-        transform: scale(var(--pressScale, 1));
-        transform-origin: center;
-
-        transition: transform 120ms ease-out, box-shadow 120ms ease-out;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06); /* sombra inicial suave */
+        transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
     }
 
-    /* Tap sutil */
     .expense-item:active {
-        --pressScale: 0.995; /* casi imperceptible, natural */
-        box-shadow: 0 1px 6px rgba(0,0,0,0.12);
+        transform: scale(0.99);
+        background: color-mix(in srgb, var(--color-bg-secondary) 84%, var(--color-fill-secondary));
     }
 
     .expense-icon {
-        width: clamp(40px, 5vw, 48px);
-        height: clamp(40px, 5vw, 48px);
-        background: var(--color-fill-secondary);
-        border-radius: var(--radius-md);
+        width: 46px;
+        height: 46px;
+        border-radius: 16px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: clamp(18px, 2vw, 22px);
-        flex-shrink: 0;
+        background: color-mix(in srgb, var(--color-fill-secondary) 82%, var(--color-bg-primary));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, white 6%, transparent);
+        font-size: 22px;
+        line-height: 1;
     }
 
     .expense-details {
-        flex: 1;
         min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
+        display: grid;
+        gap: 3px;
     }
 
     .expense-title {
-        font-size: clamp(14px, 1.4vw, 18px);
-        font-weight: var(--font-weight-semibold);
-        margin: 0;
-        color: var(--color-text-primary);
-        line-height: 1.3;
-    }
-
-    .expense-date {
-        font-size: clamp(12px, 1.1vw, 14px);
-        color: var(--color-text-secondary);
-        margin: 0;
-    }
-
-    .expense-note {
-        font-size: clamp(12px, 1.1vw, 14px);
-        color: var(--color-text-tertiary);
-        margin: 0;
-        font-style: italic;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.25;
+        font-weight: 750;
+        color: var(--color-text-primary);
+    }
+
+    .expense-date {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.25;
+        font-weight: 550;
+        color: var(--color-text-secondary);
+    }
+
+    .expense-note {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin: 1px 0 0;
+        font-size: 12px;
+        line-height: 1.25;
+        color: var(--color-text-tertiary);
     }
 
     .expense-amount {
-        font-size: clamp(16px, 1.6vw, 20px);
-        font-weight: var(--font-weight-bold);
-        color: var(--color-red);
+        justify-self: end;
+        align-self: center;
+        min-width: 74px;
+        padding-left: 8px;
         text-align: right;
-        flex-shrink: 0;
-        min-width: 60px;
+        font-size: 16px;
+        line-height: 1.15;
+        font-weight: 850;
+        color: var(--color-red);
+        font-variant-numeric: tabular-nums;
     }
 
-    /* Botón de eliminación */
     .delete-icon-button {
-        background: transparent;
-        border: none;
-        color: var(--color-text-tertiary);
-        width: 32px;
-        height: 32px;
-        border-radius: var(--radius-sm);
+        grid-column: 4;
+        width: 38px;
+        height: 38px;
+        margin-left: -4px;
+        border: 1px solid transparent;
+        border-radius: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
+        background: transparent;
+        color: var(--color-text-tertiary);
         cursor: pointer;
-        -webkit-tap-highlight-color: transparent;
-        transition: all 0.15s ease;
         flex-shrink: 0;
-        margin-left: var(--spacing-xs);
+        -webkit-tap-highlight-color: transparent;
+        transition: background 140ms ease, color 140ms ease, transform 140ms ease;
     }
 
     .delete-icon-button:hover {
-        background: var(--color-fill-tertiary);
+        background: color-mix(in srgb, var(--color-red) 10%, transparent);
         color: var(--color-red);
-        transform: scale(1.05);
     }
 
     .delete-icon-button:active {
-        background: var(--color-fill-secondary);
         transform: scale(0.95);
     }
 
@@ -200,8 +217,13 @@
     }
 
     .loading-spinner {
-        font-size: 14px;
-        animation: spin 1s linear infinite;
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--color-fill-tertiary);
+        border-top-color: var(--color-red);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
     }
 
     @keyframes spin {
@@ -209,52 +231,47 @@
         to { transform: rotate(360deg); }
     }
 
+    @media (prefers-reduced-motion: reduce) {
+        .loading-spinner { animation-duration: 1.8s; }
+    }
+
     /* Mobile adjustments */
     @media (max-width: 480px) {
         .expense-item {
+            grid-template-columns: 44px minmax(0, 1fr) auto auto;
+            min-height: 64px;
             padding: 10px;
             gap: 10px;
         }
-        .expense-details {
-            gap: 1px;
+
+        .expense-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 15px;
+            font-size: 21px;
         }
+
+        .expense-amount {
+            min-width: 66px;
+            font-size: 15px;
+        }
+
         .delete-icon-button {
-            width: 28px;
-            height: 28px;
+            width: 38px;
+            height: 38px;
         }
+
         .delete-icon-button svg {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
         }
     }
 
     /* Desktop adjustments */
     @media (min-width: 768px) {
-        .expense-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr; /* título, fecha, nota */
-            align-items: center;
-            gap: 8px;
-            min-width: 0;
-        }
-        .expense-title {
-            grid-column: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .expense-date {
-            grid-column: 2;
-            text-align: center;
-            min-width: 0;
-        }
-        .expense-note {
-            grid-column: 3;
-            text-align: right;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            min-width: 0;
+        .expense-item {
+            grid-template-columns: 48px minmax(0, 1fr) auto auto;
+            padding: 12px 14px;
         }
     }
 </style>
